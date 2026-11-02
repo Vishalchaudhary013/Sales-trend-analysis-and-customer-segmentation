@@ -22,13 +22,22 @@ _GRID = "#E6E8EB"
 _NO_DATA = "#D9DCE0"
 CUR = config.CURRENCY_SYMBOL
 
-METRIC_LABELS: dict[str, str] = {
-    "revenue": f"Revenue ({CUR})",
+METRIC_NAMES: dict[str, str] = {
+    "revenue": "Revenue",
     "orders": "Orders (invoices)",
     "customers": "Active customers",
-    "aov": f"Average order value ({CUR})",
+    "aov": "Average order value",
     "units": "Units sold",
 }
+MONEY_METRICS: frozenset[str] = frozenset({"revenue", "aov"})
+
+
+def metric_label(metric: str, cur: str = CUR) -> str:
+    """Axis/legend label for a metric, with the currency for monetary metrics."""
+    name = METRIC_NAMES[metric]
+    return f"{name} ({cur.strip()})" if metric in MONEY_METRICS else name
+
+
 FIGURE_DESCRIPTIONS: dict[str, str] = {
     "trend": "Selected metric per period. Hollow markers and a dashed segment mark partial "
     "periods at the edges of the data, which are not comparable with full periods.",
@@ -48,11 +57,11 @@ FIGURE_DESCRIPTIONS: dict[str, str] = {
 }
 
 
-def money(value: float | None, decimals: int = 0) -> str:
+def money(value: float | None, decimals: int = 0, cur: str = CUR) -> str:
     """Format a currency amount (``£1,234``), or an em dash when missing."""
     if value is None or pd.isna(value):
         return "—"
-    return f"{CUR}{value:,.{decimals}f}"
+    return f"{cur}{value:,.{decimals}f}"
 
 
 def apply_theme(fig: go.Figure, title: str, x_title: str = "", y_title: str = "") -> go.Figure:
@@ -82,17 +91,19 @@ def empty_figure(message: str) -> go.Figure:
     return apply_theme(fig, "")
 
 
-def _hover_value(metric: str) -> str:
+def _hover_value(metric: str, cur: str = CUR) -> str:
     if metric in ("revenue", "aov"):
-        return f"{CUR}%{{y:,.2f}}"
+        return f"{cur}%{{y:,.2f}}"
     return "%{y:,}"
 
 
-def fig_trend(ts: pd.DataFrame, metric: str = "revenue", freq: str = "Monthly") -> go.Figure:
+def fig_trend(
+    ts: pd.DataFrame, metric: str = "revenue", freq: str = "Monthly", cur: str = CUR
+) -> go.Figure:
     """Line chart of one metric over time, with partial periods visibly marked."""
     if ts.empty:
         return empty_figure("No sales in the current view.")
-    label = METRIC_LABELS[metric]
+    label = metric_label(metric, cur)
     full = ts["partial"].eq(False)
     fig = go.Figure()
     # Solid line through full periods; dashed through the whole series underneath
@@ -108,7 +119,7 @@ def fig_trend(ts: pd.DataFrame, metric: str = "revenue", freq: str = "Monthly") 
         line={"color": C.SINGLE_SERIES_COLOR, "width": 2},
         marker={"size": 8 if freq != "Daily" else 4},
         customdata=ts[["period_label"]],
-        hovertemplate=f"%{{customdata[0]}}<br>{label}: {_hover_value(metric)}<extra></extra>",
+        hovertemplate=f"%{{customdata[0]}}<br>{label}: {_hover_value(metric, cur)}<extra></extra>",
         connectgaps=False,
     )
     part = ts[~full]
@@ -125,10 +136,10 @@ def fig_trend(ts: pd.DataFrame, metric: str = "revenue", freq: str = "Monthly") 
                 "line": {"color": C.SINGLE_SERIES_COLOR, "width": 2},
             },  # fmt: skip
             customdata=part[["period_label"]],
-            hovertemplate=f"%{{customdata[0]}} (partial)<br>{label}: {_hover_value(metric)}"
+            hovertemplate=f"%{{customdata[0]}} (partial)<br>{label}: {_hover_value(metric, cur)}"
             "<extra></extra>",
         )
-    fig.update_yaxes(rangemode="tozero", tickprefix=CUR if metric in ("revenue", "aov") else "")
+    fig.update_yaxes(rangemode="tozero", tickprefix=cur if metric in ("revenue", "aov") else "")
     return apply_theme(fig, f"{label} — {freq.lower()}", "Period", label)
 
 
@@ -156,7 +167,7 @@ def fig_growth(ts: pd.DataFrame, freq: str = "Monthly") -> go.Figure:
     return apply_theme(fig, f"Revenue growth vs previous {unit}", "Period", "Change in revenue")
 
 
-def fig_weekday_hour(matrix: pd.DataFrame) -> go.Figure:
+def fig_weekday_hour(matrix: pd.DataFrame, cur: str = CUR) -> go.Figure:
     """Sequential heatmap of revenue by weekday x hour; no-trading cells in grey."""
     if matrix.empty:
         return empty_figure("No sales in the current view.")
@@ -172,8 +183,8 @@ def fig_weekday_hour(matrix: pd.DataFrame) -> go.Figure:
         x=hours,
         y=matrix.index,
         colorscale=C.SEQUENTIAL_SCALE,
-        colorbar={"title": f"Revenue ({CUR})", "tickprefix": CUR},
-        hovertemplate=f"%{{y}} %{{x}}<br>Revenue: {CUR}%{{z:,.0f}}<extra></extra>",
+        colorbar={"title": f"Revenue ({cur})", "tickprefix": cur},
+        hovertemplate=f"%{{y}} %{{x}}<br>Revenue: {cur}%{{z:,.0f}}<extra></extra>",
         xgap=2,
         ygap=2,
     )
@@ -185,7 +196,7 @@ def fig_weekday_hour(matrix: pd.DataFrame) -> go.Figure:
     return apply_theme(fig, "Revenue by weekday and hour", "Hour of day", "")
 
 
-def fig_top_products(top: pd.DataFrame, by: str = "revenue") -> go.Figure:
+def fig_top_products(top: pd.DataFrame, by: str = "revenue", cur: str = CUR) -> go.Figure:
     """Horizontal bars of top products (largest at the top) with value labels."""
     if top.empty:
         return empty_figure("No product data in the current view.")
@@ -193,7 +204,7 @@ def fig_top_products(top: pd.DataFrame, by: str = "revenue") -> go.Figure:
     names = [f"{d if isinstance(d, str) else ''} ({s})"[:48]
              for d, s in zip(data[C.COL_DESC], data[C.COL_STOCK], strict=True)]  # fmt: skip
     values = data["units"] if by == "units" else data["revenue"]
-    text = [f"{v:,.0f}" if by == "units" else money(v) for v in values]
+    text = [f"{v:,.0f}" if by == "units" else money(v, cur=cur) for v in values]
     fig = go.Figure(
         go.Bar(
             x=values,
@@ -207,23 +218,23 @@ def fig_top_products(top: pd.DataFrame, by: str = "revenue") -> go.Figure:
                 [data["revenue"], data["units"], data["orders"], data["share"]], axis=-1
             ),  # fmt: skip
             hovertemplate=(
-                f"%{{y}}<br>Revenue: {CUR}%{{customdata[0]:,.2f}}<br>Units: %{{customdata[1]:,}}"
+                f"%{{y}}<br>Revenue: {cur}%{{customdata[0]:,.2f}}<br>Units: %{{customdata[1]:,}}"
                 "<br>Orders: %{customdata[2]:,}<br>Share of revenue: %{customdata[3]:.1%}"
                 "<extra></extra>"
             ),
         )
     )
-    x_title = "Units sold" if by == "units" else f"Revenue ({CUR})"
+    x_title = "Units sold" if by == "units" else f"Revenue ({cur})"
     ranked = "units" if by == "units" else "revenue"
     apply_theme(fig, f"Top {len(data)} products by {ranked}", x_title, "")
     if by != "units":
-        fig.update_xaxes(tickprefix=CUR)
+        fig.update_xaxes(tickprefix=cur)
     fig.update_layout(height=max(380, 30 * len(data) + 120),
                       margin={"l": 320, "r": 90, "t": 64, "b": 56})  # fmt: skip
     return fig
 
 
-def fig_countries(summary: pd.DataFrame, n: int = 15) -> go.Figure:
+def fig_countries(summary: pd.DataFrame, n: int = 15, cur: str = CUR) -> go.Figure:
     """Horizontal bars of revenue by country (top ``n``), share in labels."""
     if summary.empty:
         return empty_figure("No country data in the current view.")
@@ -235,20 +246,21 @@ def fig_countries(summary: pd.DataFrame, n: int = 15) -> go.Figure:
             orientation="h",
             marker={"color": C.SINGLE_SERIES_COLOR},
             text=[
-                f"{money(r)} ({s:.1%})" for r, s in zip(data["revenue"], data["share"], strict=True)
+                f"{money(r, cur=cur)} ({s:.1%})"
+                for r, s in zip(data["revenue"], data["share"], strict=True)
             ],  # fmt: skip
             textposition="outside",
             cliponaxis=False,
             customdata=np.stack([data["orders"], data["customers"], data["aov"]], axis=-1),
             hovertemplate=(
-                f"%{{y}}<br>Revenue: {CUR}%{{x:,.2f}}<br>Orders: %{{customdata[0]:,}}"
-                f"<br>Customers: %{{customdata[1]:,}}<br>AOV: {CUR}%{{customdata[2]:,.2f}}"
+                f"%{{y}}<br>Revenue: {cur}%{{x:,.2f}}<br>Orders: %{{customdata[0]:,}}"
+                f"<br>Customers: %{{customdata[1]:,}}<br>AOV: {cur}%{{customdata[2]:,.2f}}"
                 "<extra></extra>"
             ),
         )
     )
-    apply_theme(fig, f"Revenue by country (top {len(data)})", f"Revenue ({CUR})", "")
-    fig.update_xaxes(tickprefix=CUR)
+    apply_theme(fig, f"Revenue by country (top {len(data)})", f"Revenue ({cur})", "")
+    fig.update_xaxes(tickprefix=cur)
     fig.update_layout(height=max(380, 30 * len(data) + 120),
                       margin={"l": 160, "r": 150, "t": 64, "b": 56})  # fmt: skip
     return fig
@@ -274,7 +286,7 @@ def fig_new_returning(df: pd.DataFrame) -> go.Figure:
     return apply_theme(fig, "New vs returning customers per month", "Month", "Customers")
 
 
-def fig_cancellations(df: pd.DataFrame) -> go.Figure:
+def fig_cancellations(df: pd.DataFrame, cur: str = CUR) -> go.Figure:
     """Line of monthly cancellation rate (share of invoices) with value labels."""
     if df.empty:
         return empty_figure("No invoices in the current view.")
@@ -290,7 +302,7 @@ def fig_cancellations(df: pd.DataFrame) -> go.Figure:
             customdata=np.stack([df["cancelled"], df["invoices"], df["cancelled_value"]], axis=-1),
             hovertemplate=(
                 "%{x}<br>Cancellation rate: %{y:.1%}<br>%{customdata[0]:,} of "
-                f"%{{customdata[1]:,}} invoices<br>Cancelled value: {CUR}%{{customdata[2]:,.0f}}"
+                f"%{{customdata[1]:,}} invoices<br>Cancelled value: {cur}%{{customdata[2]:,.0f}}"
                 "<extra></extra>"
             ),
         )
@@ -300,8 +312,13 @@ def fig_cancellations(df: pd.DataFrame) -> go.Figure:
     return apply_theme(fig, "Cancellation rate per month", "Month", "Share of invoices cancelled")
 
 
-def fig_donut(mix: pd.DataFrame, title: str, value_kind: str = "money",
-              centre: str | None = None) -> go.Figure:  # fmt: skip
+def fig_donut(
+    mix: pd.DataFrame,
+    title: str,
+    value_kind: str = "money",
+    centre: str | None = None,
+    cur: str = CUR,
+) -> go.Figure:
     """Donut (circle) chart for a part-to-whole breakdown of at most six slices.
 
     Slices use the fixed categorical order (``"Other"`` is always grey), are
@@ -313,6 +330,7 @@ def fig_donut(mix: pd.DataFrame, title: str, value_kind: str = "money",
         title: Chart title.
         value_kind: ``"money"`` or ``"count"`` (hover formatting).
         centre: Optional text in the hole (e.g. the total).
+        cur: Currency prefix for monetary values.
     """
     if mix.empty or mix["value"].sum() <= 0:
         return empty_figure("No data for this breakdown in the current view.")
@@ -325,7 +343,7 @@ def fig_donut(mix: pd.DataFrame, title: str, value_kind: str = "money",
         else:
             colors.append(C.CATEGORICAL_ORDER[i % len(C.CATEGORICAL_ORDER)])
             i += 1
-    value_fmt = f"{CUR}%{{value:,.0f}}" if value_kind == "money" else "%{value:,.0f}"
+    value_fmt = f"{cur}%{{value:,.0f}}" if value_kind == "money" else "%{value:,.0f}"
     # Legend entries carry the share so every slice is identified in text.
     labels = [f"{lbl} · {sh:.1%}" for lbl, sh in zip(mix["label"], mix["share"], strict=True)]
     fig = go.Figure(
@@ -356,11 +374,11 @@ def fig_donut(mix: pd.DataFrame, title: str, value_kind: str = "money",
     return fig
 
 
-def compact_money(value: float | None) -> str:
+def compact_money(value: float | None, cur: str = CUR) -> str:
     """Short currency label for tight spaces: ``£9.82M``, ``£436k``, ``£950``."""
     if value is None or pd.isna(value):
         return "—"
     for size, suffix in ((1e9, "B"), (1e6, "M"), (1e3, "k")):
         if abs(value) >= size:
-            return f"{CUR}{value / size:.3g}{suffix}"
-    return f"{CUR}{value:,.0f}"
+            return f"{cur}{value / size:.3g}{suffix}"
+    return f"{cur}{value:,.0f}"

@@ -209,7 +209,50 @@ FONT_FAMILY: Final[str] = "Inter, Segoe UI, Helvetica, Arial, sans-serif"
 BASE_FONT_SIZE: Final[int] = 14
 PLOT_TEMPLATE: Final[str] = "plotly_white"
 EXPORT_DPI: Final[int] = 300
-CURRENCY_SYMBOL: Final[str] = "£"
+CURRENCY_SYMBOL: Final[str] = "£"  # symbol of the base (source) currency
+
+# --------------------------------------------------------------------------- #
+# Currency conversion
+# --------------------------------------------------------------------------- #
+BASE_CURRENCY: Final[str] = "GBP"  # currency of the source data
+FX_FILE: Final[Path] = RAW_DIR / "fx_daily_per_usd.csv"
+# Daily Federal Reserve (H.10, via FRED) rates, packaged by datahub.io (ODC-PDDL).
+# Convention verified against market anchors: every series = units of currency per 1 USD.
+FX_URL: Final[str] = "https://raw.githubusercontent.com/datasets/exchange-rates/main/data/daily.csv"
+FX_SOURCE: Final[str] = (
+    "US Federal Reserve H.10 daily rates (via FRED), packaged by datahub.io "
+    "core/exchange-rates (ODC-PDDL)"
+)
+# ISO code -> (name, display prefix, country label in the FX file; None = USD itself).
+CURRENCIES: Final[dict[str, tuple[str, str, str | None]]] = {
+    "GBP": ("British pound", "£", "United Kingdom"),
+    "USD": ("US dollar", "$", None),
+    "EUR": ("Euro", "€", "Euro"),
+    "INR": ("Indian rupee", "₹", "India"),
+    "JPY": ("Japanese yen", "¥", "Japan"),
+    "CNY": ("Chinese yuan", "CN¥", "China"),
+    "AUD": ("Australian dollar", "A$", "Australia"),
+    "CAD": ("Canadian dollar", "C$", "Canada"),
+    "CHF": ("Swiss franc", "CHF ", "Switzerland"),
+    "SGD": ("Singapore dollar", "S$", "Singapore"),
+    "HKD": ("Hong Kong dollar", "HK$", "Hong Kong"),
+    "NZD": ("New Zealand dollar", "NZ$", "New Zealand"),
+    "SEK": ("Swedish krona", "SEK ", "Sweden"),
+    "NOK": ("Norwegian krone", "NOK ", "Norway"),
+    "DKK": ("Danish krone", "DKK ", "Denmark"),
+    "ZAR": ("South African rand", "R", "South Africa"),
+    "BRL": ("Brazilian real", "R$", "Brazil"),
+    "MXN": ("Mexican peso", "MX$", "Mexico"),
+    "KRW": ("South Korean won", "₩", "South Korea"),
+    "MYR": ("Malaysian ringgit", "RM", "Malaysia"),
+    "THB": ("Thai baht", "฿", "Thailand"),
+    "TWD": ("New Taiwan dollar", "NT$", "Taiwan"),
+}
+FX_MODES: Final[dict[str, str]] = {
+    "daily": "Daily rate on each invoice date",
+    "average": "Single average rate over the data period",
+}
+CURRENCY_STATE_KEY: Final[str] = "currency_setting"
 
 # --------------------------------------------------------------------------- #
 # App

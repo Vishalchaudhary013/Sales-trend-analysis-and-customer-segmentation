@@ -26,7 +26,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src import config, ingestion  # noqa: E402
+from src import config, currency, ingestion  # noqa: E402
 
 TIMEOUT_S = 120
 ORIGINAL_DIR = config.RAW_DIR / "original"
@@ -137,6 +137,39 @@ def acquire(use_mirror: bool) -> tuple[str, bytes, str]:
     raise RuntimeError("; ".join(failures))
 
 
+def fetch_rates(force: bool = False, target: Path = config.FX_FILE) -> bool:
+    """Download the daily exchange-rate file (used for currency conversion).
+
+    Failure is not fatal: the dashboard then offers the base currency and a
+    user-supplied custom rate only.
+
+    Returns:
+        True if a valid rate file is present afterwards.
+    """
+    if target.exists() and not force:
+        print(f"Exchange rates already present: {target}")
+    else:
+        try:
+            print(f"Downloading exchange rates:\n  {config.FX_URL}")
+            data = http_get(config.FX_URL)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data)
+            print(f"  saved {target}  sha256={ingestion.sha256_bytes(data)}")
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            print(f"WARNING: exchange rates unavailable ({exc}). Currency conversion will be "
+                  "limited to user-supplied rates.", file=sys.stderr)  # fmt: skip
+            return False
+    try:
+        rates = currency.load_rates(target)
+    except (currency.CurrencyError, ValueError, KeyError) as exc:
+        print(f"WARNING: exchange-rate file invalid ({exc}).", file=sys.stderr)
+        return False
+    codes = currency.available_currencies(rates)
+    print(f"  {len(codes)} currencies, {rates.index.min():%Y-%m-%d} to "
+          f"{rates.index.max():%Y-%m-%d}: {', '.join(codes)}")  # fmt: skip
+    return True
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run the CLI and return a process exit code."""
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
@@ -168,6 +201,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  origin:   {origin}\n  original: {original}  sha256={ingestion.sha256_bytes(data)}"
               f"\n  raw CSV:  {config.RAW_FILE}")  # fmt: skip
 
+    print()
+    fetch_rates(force=args.force)
     print("\nValidating and cleaning ...")
     config.PROCESSED_CACHE.unlink(missing_ok=True)  # always rebuild from the raw file
     result = ingestion.load_bundled_cached()

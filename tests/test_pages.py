@@ -48,3 +48,16 @@ def test_overview_kpis_and_filter():
     assert "Net revenue" in m
     at.radio[0].set_value("guest").run()
     assert _metrics(at)["Active customers"] == "0"
+
+
+def test_currency_switch_converts_kpis():
+    at = _app()
+    at.switch_page("pages/2_Executive_Overview.py").run()
+    gbp = _metrics(at)["Revenue (completed sales)"]
+    at.selectbox[0].set_value("USD").run()
+    assert not at.exception and not at.error
+    usd = _metrics(at)["Revenue (completed sales)"]
+    assert gbp.startswith("£") and usd.startswith("$")
+    ratio = float(usd[1:].replace(",", "")) / float(gbp[1:].replace(",", ""))
+    assert 1.53 < ratio < 1.67  # within the 2011 GBP/USD range
+    assert any("Federal Reserve" in c.value for c in at.caption)
