@@ -264,3 +264,20 @@ def test_real_dataset_reference():
     real = modeling.build_dataset(ingestion.load_bundled_cached().data)
     assert len(real.y) == 3_364
     assert real.churn_rate == pytest.approx(0.43, abs=0.005)
+
+
+def test_model_status_detects_version_mismatch(tmp_path, ds):
+    import json
+
+    tm = modeling.train_final(ds, "A", "Logistic Regression", None, 0.5)
+    path = modeling.save_model(tm, tmp_path / "m.joblib")
+    assert modeling.model_status(path) == ("ok", "")
+    meta = json.loads(path.with_suffix(".json").read_text())
+    meta["versions"]["scikit-learn"] = "0.0.1"
+    path.with_suffix(".json").write_text(json.dumps(meta))
+    status, reason = modeling.model_status(path)
+    assert status == "incompatible" and "0.0.1" in reason
+    assert modeling.load_model(path) is None
+    path.with_suffix(".json").unlink()
+    assert modeling.model_status(path)[0] == "incompatible"
+    assert modeling.model_status(tmp_path / "none.joblib")[0] == "missing"

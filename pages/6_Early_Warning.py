@@ -10,7 +10,7 @@ page = ui.load_page_data()
 
 model = ui.saved_model()
 if model is None:
-    st.warning("No churn model has been saved yet.")
+    st.warning(modeling.model_status(config.MODEL_FILE)[1] or "No churn model is available.")
     if st.button("Train and save the recommended model now", type="primary"):
         with st.spinner("Training…"):
             key = ui.dataset_key(page.active)

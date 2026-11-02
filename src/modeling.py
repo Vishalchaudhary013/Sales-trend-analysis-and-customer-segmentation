@@ -489,9 +489,33 @@ def save_model(model: TrainedModel, path: Path = C.MODEL_FILE) -> Path:
     return path
 
 
-def load_model(path: Path = C.MODEL_FILE) -> TrainedModel | None:
-    """Load a persisted model, or ``None`` if absent or unreadable."""
+def model_status(path: Path = C.MODEL_FILE) -> tuple[str, str]:
+    """Check a saved model without unpickling it.
+
+    Returns:
+        ``("ok", "")``, ``("missing", reason)`` or ``("incompatible", reason)``.
+        Pickled scikit-learn models are only reliable with the version that
+        saved them, so a version mismatch (from the JSON metadata) is
+        reported as incompatible and the model must be retrained.
+    """
     if not path.exists():
+        return "missing", "No model has been saved yet."
+    meta_path = path.with_suffix(".json")
+    try:
+        saved = json.loads(meta_path.read_text())["versions"]["scikit-learn"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return "incompatible", "The saved model has no readable metadata; retrain it."
+    if saved != sklearn.__version__:
+        return "incompatible", (
+            f"The saved model was trained with scikit-learn {saved}, but this environment runs "
+            f"{sklearn.__version__}. Retrain it here."
+        )
+    return "ok", ""
+
+
+def load_model(path: Path = C.MODEL_FILE) -> TrainedModel | None:
+    """Load a persisted model, or ``None`` if absent, incompatible or unreadable."""
+    if model_status(path)[0] != "ok":
         return None
     try:
         model = joblib.load(path)

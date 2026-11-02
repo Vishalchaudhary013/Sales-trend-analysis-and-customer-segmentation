@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -37,3 +39,20 @@ def clean():
     from src import ingestion
 
     return ingestion.load_table(make_transactions(120, seed=3), "synthetic").data
+
+
+@pytest.fixture(scope="session", autouse=True)
+def protect_real_data_files():
+    """Fail the run if any test modifies the real downloaded data files."""
+    from src import config
+
+    def digest():
+        return {
+            p: hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in (config.RAW_FILE, config.FX_FILE)
+            if p.exists()
+        }
+
+    before = digest()
+    yield
+    assert digest() == before, "A test modified the real data files in data/raw/"

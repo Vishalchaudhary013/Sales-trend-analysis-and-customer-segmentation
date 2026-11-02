@@ -17,127 +17,27 @@ for fast dashboard start-up.
 from __future__ import annotations
 
 import argparse
-import io
 import sys
 import urllib.error
-import urllib.request
 import zipfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from src import acquire as acquire_mod  # noqa: E402
 from src import config, currency, ingestion  # noqa: E402
-
-TIMEOUT_S = 120
-ORIGINAL_DIR = config.RAW_DIR / "original"
-
-
-def http_get(url: str) -> bytes:
-    """Download ``url`` and return the body.
-
-    Raises:
-        urllib.error.URLError: On network failure.
-    """
-    request = urllib.request.Request(url, headers={"User-Agent": "sales-analytics/1.0"})
-    with urllib.request.urlopen(request, timeout=TIMEOUT_S) as response:  # noqa: S310
-        return response.read()
+from src.acquire import (  # noqa: E402,F401 - re-exported for backwards compatibility
+    ORIGINAL_DIR,
+    acquire,
+    acquire_from_source,
+    extract_from_zip,
+    http_get,
+    manual_instructions,
+    write_raw,
+)
 
 
-def extract_from_zip(data: bytes) -> tuple[str, bytes]:
-    """Return ``(name, bytes)`` of the first .xlsx/.csv member (nested zips searched).
-
-    Only base names are used and nothing is written here, so archive paths
-    cannot escape the target directory.
-
-    Raises:
-        zipfile.BadZipFile: If ``data`` is not a zip archive.
-        FileNotFoundError: If no data file is found.
-    """
-    with zipfile.ZipFile(io.BytesIO(data)) as archive:
-        members = sorted(archive.infolist(), key=lambda i: Path(i.filename).name
-                         != config.DATASET_ZIP_MEMBER)  # fmt: skip
-        for info in members:
-            name = Path(info.filename).name
-            if name.lower().endswith((".xlsx", ".csv")):
-                return name, archive.read(info)
-            if name.lower().endswith(".zip"):
-                try:
-                    return extract_from_zip(archive.read(info))
-                except FileNotFoundError:
-                    continue
-    raise FileNotFoundError("No .xlsx or .csv file found in the archive.")
-
-
-def acquire_from_source(source: Path) -> tuple[str, bytes]:
-    """Return ``(name, bytes)`` from a local .zip/.xlsx/.csv file."""
-    data = source.read_bytes()
-    if source.suffix.lower() == ".zip":
-        return extract_from_zip(data)
-    return source.name, data
-
-
-def write_raw(name: str, data: bytes, raw_file: Path = config.RAW_FILE) -> Path:
-    """Keep the original bytes and write the canonical CSV used by the app.
-
-    CSV input is copied byte-for-byte; XLSX is converted with all identifier
-    columns kept as text (no values are altered).
-    """
-    ORIGINAL_DIR.mkdir(parents=True, exist_ok=True)
-    original = ORIGINAL_DIR / Path(name).name
-    original.write_bytes(data)
-    raw_file.parent.mkdir(parents=True, exist_ok=True)
-    if name.lower().endswith(".csv"):
-        raw_file.write_bytes(data)
-    else:
-        ingestion.read_table_bytes(data, name).to_csv(raw_file, index=False)
-    return original
-
-
-def manual_instructions() -> str:
-    """Return step-by-step manual download instructions."""
-    return (
-        "\nAutomatic download failed. To install the dataset manually:\n"
-        f"  1. Open {config.DATASET_PAGE_URL} and click 'Download' (online+retail.zip),\n"
-        f"     or download the CSV copy: {config.DATASET_MIRROR_URL}\n"
-        "  2. Run:\n"
-        "       python scripts/fetch_data.py --source path/to/online+retail.zip\n"
-        "     (an extracted 'Online Retail.xlsx' or the CSV also works), or copy a CSV to:\n"
-        f"       {config.RAW_FILE}\n"
-    )
-
-
-def acquire(use_mirror: bool) -> tuple[str, bytes, str]:
-    """Download from UCI, falling back to the public CSV copy if allowed.
-
-    Returns:
-        ``(file_name, bytes, origin_url)``.
-
-    Raises:
-        RuntimeError: When every source failed (message lists each failure).
-    """
-    failures = []
-    try:
-        print(f"Downloading {config.DATASET_ZIP_URL} ...")
-        name, data = extract_from_zip(http_get(config.DATASET_ZIP_URL))
-        return name, data, config.DATASET_ZIP_URL
-    except (urllib.error.URLError, TimeoutError, OSError, zipfile.BadZipFile) as exc:
-        failures.append(f"UCI: {exc}")
-        print(f"  UCI download failed: {exc}")
-    if use_mirror:
-        try:
-            print(f"Falling back to the public CSV copy:\n  {config.DATASET_MIRROR_URL}")
-            return (
-                "online-retail-dataset.csv",
-                http_get(config.DATASET_MIRROR_URL),
-                (config.DATASET_MIRROR_URL),
-            )
-        except (urllib.error.URLError, TimeoutError, OSError) as exc:
-            failures.append(f"mirror: {exc}")
-            print(f"  Mirror download failed: {exc}")
-    raise RuntimeError("; ".join(failures))
-
-
-def fetch_rates(force: bool = False, target: Path = config.FX_FILE) -> bool:
+def fetch_rates(force: bool = False, target: Path | None = None) -> bool:
     """Download the daily exchange-rate file (used for currency conversion).
 
     Failure is not fatal: the dashboard then offers the base currency and a
@@ -146,18 +46,20 @@ def fetch_rates(force: bool = False, target: Path = config.FX_FILE) -> bool:
     Returns:
         True if a valid rate file is present afterwards.
     """
+    target = target or config.FX_FILE
     if target.exists() and not force:
         print(f"Exchange rates already present: {target}")
     else:
         try:
             print(f"Downloading exchange rates:\n  {config.FX_URL}")
-            data = http_get(config.FX_URL)
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(data)
-            print(f"  saved {target}  sha256={ingestion.sha256_bytes(data)}")
+            acquire_mod.download_rates(target)
+            print(f"  saved {target}  sha256={ingestion.sha256_file(target)}")
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
-            print(f"WARNING: exchange rates unavailable ({exc}). Currency conversion will be "
-                  "limited to user-supplied rates.", file=sys.stderr)  # fmt: skip
+            print(
+                f"WARNING: exchange rates unavailable ({exc}). Currency conversion will be "
+                "limited to user-supplied rates.",
+                file=sys.stderr,
+            )
             return False
     try:
         rates = currency.load_rates(target)
@@ -165,8 +67,10 @@ def fetch_rates(force: bool = False, target: Path = config.FX_FILE) -> bool:
         print(f"WARNING: exchange-rate file invalid ({exc}).", file=sys.stderr)
         return False
     codes = currency.available_currencies(rates)
-    print(f"  {len(codes)} currencies, {rates.index.min():%Y-%m-%d} to "
-          f"{rates.index.max():%Y-%m-%d}: {', '.join(codes)}")  # fmt: skip
+    print(
+        f"  {len(codes)} currencies, {rates.index.min():%Y-%m-%d} to "
+        f"{rates.index.max():%Y-%m-%d}: {', '.join(codes)}"
+    )
     return True
 
 
@@ -198,8 +102,10 @@ def main(argv: list[str] | None = None) -> int:
         except ingestion.IngestionError as exc:
             print(f"ERROR: {exc}", file=sys.stderr)
             return 1
-        print(f"  origin:   {origin}\n  original: {original}  sha256={ingestion.sha256_bytes(data)}"
-              f"\n  raw CSV:  {config.RAW_FILE}")  # fmt: skip
+        print(
+            f"  origin:   {origin}\n  original: {original}  sha256={ingestion.sha256_bytes(data)}"
+            f"\n  raw CSV:  {config.RAW_FILE}"
+        )
 
     print()
     fetch_rates(force=args.force)
@@ -207,9 +113,11 @@ def main(argv: list[str] | None = None) -> int:
     config.PROCESSED_CACHE.unlink(missing_ok=True)  # always rebuild from the raw file
     result = ingestion.load_bundled_cached()
     report = result.report
-    print(f"Validation [{'OK' if report.is_valid else 'FAILED'}] {report.source}: "
-          f"{report.n_rows:,} rows, {report.n_columns} columns, date format "
-          f"{report.date_format!r}, sha256={result.checksum}")  # fmt: skip
+    print(
+        f"Validation [{'OK' if report.is_valid else 'FAILED'}] {report.source}: "
+        f"{report.n_rows:,} rows, {report.n_columns} columns, date format "
+        f"{report.date_format!r}, sha256={result.checksum}"
+    )
     for issue in report.issues:
         print(f"  - {issue.level.upper()}: {issue.message}")
     if not result.is_valid or result.data is None:

@@ -19,7 +19,7 @@ Every number on screen is computed at runtime from the data; nothing is hard-cod
 4. [Usage](#usage)
 5. [Results](#results)
 6. [Exported figures](#exported-figures)
-7. [Testing and quality](#testing-and-quality)
+7. [Testing and quality](#testing-and-quality) · [Deployment](docs/DEPLOYMENT.md)
 8. [Limitations](#limitations)
 9. [Next steps](#next-steps)
 10. [Screenshots](#screenshots)
@@ -105,6 +105,7 @@ flowchart LR
 │   ├── modeling.py             # churn dataset, pipelines, CV, metrics, persistence
 │   ├── explain.py              # per-customer reason codes
 │   ├── storage.py              # SQLite repository
+│   ├── acquire.py              # dataset / exchange-rate download (script + first start)
 │   ├── visuals.py              # Plotly figure factories
 │   ├── static_figures.py       # Matplotlib 300-dpi report figures
 │   └── ui.py                   # Streamlit caching, sidebar, page helpers
@@ -113,7 +114,7 @@ flowchart LR
 ├── data/{raw,processed}/       # downloaded and cleaned data (git-ignored)
 ├── models/                     # saved model + JSON metadata (git-ignored)
 ├── reports/{figures,metrics}/  # exported PNGs, metrics.json / metrics.md (git-ignored)
-├── docs/screenshots/           # README screenshots
+├── docs/                       # DEPLOYMENT.md, screenshots/
 └── .streamlit/config.toml      # theme, upload limit, labelled menu
 ```
 
@@ -128,7 +129,7 @@ flowchart LR
 
 ## Setup
 
-Requires **Python 3.10+** and Git.
+Requires **Python 3.10+** and Git. `requirements.txt` pins the newest versions on Python 3.12+ and the newest versions that still support 3.10/3.11; the full test suite passes on 3.10, 3.11, 3.12 and 3.13.
 
 ```bash
 git clone https://github.com/vishalchaudhary013/Palak-Project.git
@@ -150,7 +151,7 @@ Install the pinned dependencies:
 pip install -r requirements.txt
 ```
 
-Download and prepare the data. This tries UCI first, then a public CSV copy of the same file, and also downloads the exchange rates:
+Download and prepare the data. This step is optional: the app downloads any missing files on first start. The script tries UCI first, then a public CSV copy of the same file, and also downloads the exchange rates:
 
 ```bash
 python scripts/fetch_data.py
@@ -161,6 +162,9 @@ If downloads are blocked, follow the printed instructions, or point the script a
 ```bash
 python scripts/fetch_data.py --source "path/to/online+retail.zip"
 ```
+
+### Deploying online
+Step-by-step guide for **Streamlit Community Cloud** (via GitHub): [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ---
 

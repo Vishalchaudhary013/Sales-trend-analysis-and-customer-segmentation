@@ -7,6 +7,7 @@ import zipfile
 import pytest
 
 from scripts import fetch_data
+from src import acquire
 
 
 def _zip(members: dict[str, bytes]) -> bytes:
@@ -36,7 +37,7 @@ def test_acquire_from_source(tmp_path):
 
 
 def test_write_raw_keeps_original(tmp_path, monkeypatch, raw):
-    monkeypatch.setattr(fetch_data, "ORIGINAL_DIR", tmp_path / "orig")
+    monkeypatch.setattr(acquire, "ORIGINAL_DIR", tmp_path / "orig")
     data = raw.to_csv(index=False).encode()
     original = fetch_data.write_raw("src.csv", data, tmp_path / "raw.csv")
     assert original.read_bytes() == data and (tmp_path / "raw.csv").read_bytes() == data
@@ -52,22 +53,56 @@ def test_acquire_falls_back_to_mirror(monkeypatch):
             raise urllib.error.URLError("blocked")
         return b"csv-bytes"
 
-    monkeypatch.setattr(fetch_data, "http_get", fake_get)
-    name, data, origin = fetch_data.acquire(use_mirror=True)
+    monkeypatch.setattr(acquire, "http_get", fake_get)
+    name, data, origin = acquire.acquire(use_mirror=True, log=lambda m: None)
     assert data == b"csv-bytes" and "githubusercontent" in origin
     with pytest.raises(RuntimeError, match="UCI"):
-        fetch_data.acquire(use_mirror=False)
+        acquire.acquire(use_mirror=False, log=lambda m: None)
 
 
 def test_main_reports_manual_instructions(monkeypatch, capsys, tmp_path):
     monkeypatch.setattr(fetch_data.config, "RAW_FILE", tmp_path / "none.csv")
-    monkeypatch.setattr(fetch_data, "ORIGINAL_DIR", tmp_path / "orig")
+    monkeypatch.setattr(acquire, "ORIGINAL_DIR", tmp_path / "orig")
     monkeypatch.setattr(fetch_data.config, "ensure_directories", lambda: None)
 
     def fail(url):
         raise urllib.error.URLError("blocked")
 
-    monkeypatch.setattr(fetch_data, "http_get", fail)
+    monkeypatch.setattr(acquire, "http_get", fail)
     assert fetch_data.main([]) == 1
     err = capsys.readouterr().err
     assert "--source" in err and "manually" in err
+
+
+def test_bootstrap_fetches_missing_files(tmp_path, monkeypatch, raw):
+    monkeypatch.setattr(acquire.config, "RAW_FILE", tmp_path / "raw" / "online_retail.csv")
+    monkeypatch.setattr(acquire.config, "FX_FILE", tmp_path / "raw" / "fx.csv")
+    monkeypatch.setattr(acquire.config, "ensure_directories", lambda: None)
+    monkeypatch.setattr(acquire, "ORIGINAL_DIR", tmp_path / "orig")
+    csv_bytes = raw.to_csv(index=False).encode()
+
+    def fake_get(url):
+        if "uci.edu" in url:
+            raise urllib.error.URLError("blocked")
+        return csv_bytes if "retail" in url else b"Date,Country,Exchange rate\n"
+
+    monkeypatch.setattr(acquire, "http_get", fake_get)
+    messages = []
+    status = acquire.bootstrap(log=messages.append)
+    assert status == {"dataset": True, "rates": True}
+    assert any("public CSV copy" in m for m in messages)
+    assert (tmp_path / "raw" / "online_retail.csv").read_bytes() == csv_bytes
+
+
+def test_bootstrap_reports_offline(tmp_path, monkeypatch):
+    monkeypatch.setattr(acquire.config, "RAW_FILE", tmp_path / "none.csv")
+    monkeypatch.setattr(acquire.config, "FX_FILE", tmp_path / "fx.csv")
+    monkeypatch.setattr(acquire.config, "ensure_directories", lambda: None)
+
+    def fail(url):
+        raise urllib.error.URLError("offline")
+
+    monkeypatch.setattr(acquire, "http_get", fail)
+    messages = []
+    assert acquire.bootstrap(log=messages.append) == {"dataset": False, "rates": False}
+    assert any("Dataset download failed" in m for m in messages)

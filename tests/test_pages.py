@@ -103,7 +103,11 @@ def test_early_warning_lists_customers():
     at = _app()
     at.switch_page("pages/6_Early_Warning.py").run()
     assert not at.exception and not at.error
-    if config.MODEL_FILE.exists():
+    from src import modeling
+
+    if modeling.model_status(config.MODEL_FILE)[0] == "ok":
         m = _metrics(at)
         assert int(m["Customers scored"].replace(",", "")) > 0
         assert len(at.dataframe) >= 1
+    else:  # missing or incompatible model: the page explains and offers retraining
+        assert any("Train and save" in b.label for b in at.button)

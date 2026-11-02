@@ -15,7 +15,7 @@ from dataclasses import dataclass
 import pandas as pd
 import streamlit as st
 
-from src import analytics, config, currency, explain, ingestion, modeling, segmentation
+from src import acquire, analytics, config, currency, explain, ingestion, modeling, segmentation
 
 logger = logging.getLogger(__name__)
 _W = "_filter_widget_"  # widget-key prefix
@@ -72,9 +72,40 @@ class ActiveDataset:
         return self.data[config.COL_DATE].max()
 
 
-@st.cache_resource(show_spinner="Loading the bundled UCI Online Retail dataset…")
+def _stamp(path) -> float:
+    """File modification time, or 0 when absent (cache key that changes on download)."""
+    return path.stat().st_mtime if path.exists() else 0.0
+
+
+def ensure_data() -> None:
+    """Download missing data files once per server (e.g. first start on Streamlit Cloud).
+
+    Shows progress while downloading and a clear warning if a download fails;
+    nothing happens when the files are already present.
+    """
+    if config.RAW_FILE.exists() and config.FX_FILE.exists():
+        return
+    if st.session_state.get("_bootstrap_attempted"):
+        return
+    st.session_state["_bootstrap_attempted"] = True
+    with st.status(
+        "First start: downloading the dataset and exchange rates…", expanded=True
+    ) as status:
+        result = acquire.bootstrap(log=st.write)
+        if all(result.values()):
+            status.update(label="Data downloaded.", state="complete", expanded=False)
+        else:
+            missing = [k for k, ok in result.items() if not ok]
+            status.update(label=f"Could not download: {', '.join(missing)}", state="error")
+
+
 def load_bundled() -> ingestion.LoadResult:
-    """Load (and cache for the server's lifetime) the bundled dataset."""
+    """Load the bundled dataset (cached; reloaded if the raw file changes)."""
+    return _load_bundled(_stamp(config.RAW_FILE))
+
+
+@st.cache_resource(show_spinner="Loading the bundled UCI Online Retail dataset…", max_entries=2)
+def _load_bundled(stamp: float) -> ingestion.LoadResult:
     return ingestion.load_bundled_cached()
 
 
@@ -83,6 +114,7 @@ def get_active_dataset() -> ActiveDataset | None:
     active = st.session_state.get(config.DATASET_STATE_KEY)
     if isinstance(active, ActiveDataset):
         return active
+    ensure_data()
     result = load_bundled()
     if not result.is_valid or result.data is None:
         return None
@@ -102,9 +134,13 @@ def show_missing_data_help() -> None:
     )
 
 
-@st.cache_resource(show_spinner=False)
 def load_fx_rates() -> pd.DataFrame | None:
-    """Load (once per server) the daily exchange rates, or ``None`` if unavailable."""
+    """Return the daily exchange rates (cached; reloaded if the file changes)."""
+    return _load_fx_rates(_stamp(config.FX_FILE))
+
+
+@st.cache_resource(show_spinner=False, max_entries=2)
+def _load_fx_rates(stamp: float) -> pd.DataFrame | None:
     try:
         return currency.load_rates()
     except (currency.CurrencyError, ValueError, KeyError) as exc:
