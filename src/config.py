@@ -181,7 +181,12 @@ PALETTE: Final[dict[str, str]] = {
 }
 OUTCOME_COLORS: Final[dict[str, str]] = {"Pass": PALETTE["blue"], "Fail": PALETTE["vermillion"]}
 OUTCOME_PATTERNS: Final[dict[str, str]] = {"Pass": "", "Fail": "/"}  # redundant encoding
-SUBJECT_COLORS: Final[dict[str, str]] = {"math": PALETTE["sky"], "portuguese": PALETTE["orange"]}
+OUTCOME_SYMBOLS: Final[dict[str, str]] = {"Pass": "circle", "Fail": "x"}
+OUTCOME_LABELS: Final[dict[int, str]] = {1: "Pass", 0: "Fail"}
+# Darkened Okabe-Ito green / reddish-purple: validated for >=3:1 contrast and CVD separation.
+SUBJECT_COLORS: Final[dict[str, str]] = {"math": "#007A5A", "portuguese": "#B5568F"}
+NEUTRAL_COLOR: Final[str] = "#4D4D4D"
+SINGLE_SERIES_COLOR: Final[str] = PALETTE["blue"]
 RISK_COLORS: Final[dict[str, str]] = {
     "High": PALETTE["vermillion"],
     "Medium": PALETTE["orange"],
@@ -193,6 +198,24 @@ FONT_FAMILY: Final[str] = "Inter, Segoe UI, Helvetica, Arial, sans-serif"
 BASE_FONT_SIZE: Final[int] = 14
 PLOT_TEMPLATE: Final[str] = "plotly_white"
 EXPORT_DPI: Final[int] = 300
+
+# Display labels for ordinal codes
+VALUE_LABELS: Final[dict[str, dict[int | str, str]]] = {
+    "studytime": {1: "<2 h", 2: "2–5 h", 3: "5–10 h", 4: ">10 h"},
+    "traveltime": {1: "<15 min", 2: "15–30 min", 3: "30–60 min", 4: ">1 h"},
+    "higher": {"yes": "Wants higher ed.", "no": "No higher ed."},
+    "subject": {"math": "Mathematics", "portuguese": "Portuguese"},
+}
+AXIS_LABELS: Final[dict[str, str]] = {
+    "G1": "First-period grade (G1, 0–20)",
+    "G2": "Second-period grade (G2, 0–20)",
+    "G3": "Final grade (G3, 0–20)",
+    "studytime": "Weekly study time",
+    "failures": "Past class failures",
+    "absence_band": "Absences (band)",
+    "subject": "Subject",
+    "higher": "Higher-education aspiration",
+}
 
 # --------------------------------------------------------------------------- #
 # App
