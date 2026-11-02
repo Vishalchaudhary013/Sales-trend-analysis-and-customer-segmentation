@@ -110,6 +110,16 @@ REQUIRED_COLUMNS: Final[tuple[str, ...]] = tuple(c.name for c in SCHEMA if c.req
 ALL_COLUMNS: Final[tuple[str, ...]] = tuple(c.name for c in SCHEMA)
 
 CANCELLATION_PREFIX: Final[str] = "C"
+ADJUSTMENT_PREFIX: Final[str] = "A"  # accounting adjustments (e.g. "Adjust bad debt")
+# Date formats tried in order; the first that parses (almost) every value wins.
+# The bundled CSV uses US month/day order ("12/1/2010 8:26" = 1 Dec 2010).
+DATE_FORMATS: Final[tuple[str, ...]] = (
+    "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d",
+    "%m/%d/%Y %H:%M", "%m/%d/%Y %H:%M:%S", "%d/%m/%Y %H:%M", "%d/%m/%Y %H:%M:%S",
+)  # fmt: skip
+DATE_PARSE_MIN_SHARE: Final[float] = 0.95  # = 1 - MAX_INVALID_ROW_SHARE
+# Unparseable values are dropped (and reported); above this share it is an error.
+MAX_INVALID_ROW_SHARE: Final[float] = 0.05
 # Stock codes that are fees/adjustments rather than products (flagged, not deleted).
 NON_PRODUCT_STOCK_CODES: Final[frozenset[str]] = frozenset(
     {"POST", "DOT", "M", "m", "C2", "D", "S", "B", "CRUK", "PADS", "BANK CHARGES",
