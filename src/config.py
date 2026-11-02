@@ -194,6 +194,43 @@ CV_FOLDS: Final[int] = 5
 CV_SHUFFLE: Final[bool] = True
 CHURN_HORIZON_DAYS: Final[int] = 90  # label window at the end of the data
 CHURN_POSITIVE_LABEL: Final[str] = "churned"  # churn = 1: no purchase in the horizon
+CHURN_RECENT_WINDOW_DAYS: Final[int] = 90  # "recent activity" features before the cut-off
+# Feature settings (A/B comparison, mirroring the original brief's design).
+CHURN_FEATURES_RFM: Final[tuple[str, ...]] = ("recency_days", "frequency", "monetary")
+CHURN_FEATURES_FULL: Final[tuple[str, ...]] = (
+    "recency_days", "frequency", "monetary", "avg_order_value", "tenure_days",
+    "distinct_products", "lines_per_order", "orders_last_90d", "revenue_last_90d",
+    "mean_days_between_orders", "cancellation_rate", "is_uk",
+)  # fmt: skip
+CHURN_SETTINGS: Final[dict[str, str]] = {
+    "A": "RFM only (recency, frequency, monetary)",
+    "B": "Full behaviour (RFM + order value, tenure, breadth, recent activity, gaps, "
+    "cancellations, UK)",
+}
+DEFAULT_CHURN_SETTING: Final[str] = "B"
+MODEL_NAMES: Final[tuple[str, ...]] = ("Logistic Regression", "Decision Tree", "Random Forest")
+DEFAULT_MODEL: Final[str] = "Random Forest"
+MODEL_FILE: Final[Path] = MODELS_DIR / "churn_model.joblib"
+MODEL_COLORS: Final[dict[str, str]] = {
+    "Logistic Regression": "#0072B2",
+    "Decision Tree": "#E69F00",
+    "Random Forest": "#009E73",
+}
+SETTING_COLORS: Final[dict[str, str]] = {"A": "#56B4E9", "B": "#0072B2"}
+FEATURE_LABELS: Final[dict[str, str]] = {
+    "recency_days": "Days since last purchase",
+    "frequency": "Number of orders",
+    "monetary": "Total spend",
+    "avg_order_value": "Average order value",
+    "tenure_days": "Days since first purchase",
+    "distinct_products": "Distinct products bought",
+    "lines_per_order": "Lines per order",
+    "orders_last_90d": "Orders in the last 90 days",
+    "revenue_last_90d": "Spend in the last 90 days",
+    "mean_days_between_orders": "Average days between orders",
+    "cancellation_rate": "Share of orders cancelled",
+    "is_uk": "UK customer",
+}
 DT_MAX_DEPTH: Final[int] = 5
 RF_N_ESTIMATORS: Final[int] = 300
 LR_MAX_ITER: Final[int] = 5000

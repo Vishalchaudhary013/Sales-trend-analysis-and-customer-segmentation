@@ -658,3 +658,191 @@ def fig_cluster_profile(profile: pd.DataFrame) -> go.Figure:
     apply_theme(fig, "Cluster profiles (standard deviations from the average customer)")
     fig.update_layout(height=120 + 60 * len(profile), margin={"l": 240, "t": 110})
     return fig
+
+
+# --------------------------------------------------------------------------- #
+# Model evaluation and early warning
+# --------------------------------------------------------------------------- #
+
+METRIC_DISPLAY: dict[str, str] = {
+    "accuracy": "Accuracy",
+    "precision": "Precision (churn)",
+    "recall": "Recall (churn)",
+    "f1": "F1 (churn)",
+    "roc_auc": "ROC-AUC",
+    "pr_auc": "PR-AUC",
+    "retained_recall": "Recall (retained)",
+}
+
+
+def fig_model_comparison(table: pd.DataFrame, metric: str = "roc_auc") -> go.Figure:
+    """Plot one metric per model for settings A and B, with the baseline as a line."""
+    if table.empty:
+        return empty_figure("No evaluation results.")
+    label = METRIC_DISPLAY.get(metric, metric)
+    fig = go.Figure()
+    models = [m for m in table["model"].unique() if not m.startswith("Baseline")]
+    for setting in sorted(table["setting"].unique()):
+        rows = table[(table["setting"] == setting)].set_index("model").reindex(models)
+        fig.add_bar(
+            x=models,
+            y=rows[metric],
+            name=f"Setting {setting}",
+            marker={
+                "color": C.SETTING_COLORS.get(setting, C.SINGLE_SERIES_COLOR),
+                "pattern": {"shape": "" if setting == "B" else "/", "fgcolor": "white"},
+                "line": {"color": "white", "width": 1},
+            },
+            error_y={"type": "data", "array": rows[f"{metric}_fold_std"], "color": _MUTED},
+            text=[f"{v:.3f}" for v in rows[metric]],
+            textposition="outside",
+            cliponaxis=False,
+            hovertemplate=f"%{{x}} · setting {setting}<br>{label}: %{{y:.3f}}<extra></extra>",
+        )
+    base = table[table["model"].str.startswith("Baseline")][metric]
+    if len(base):
+        fig.add_hline(
+            y=float(base.iloc[0]),
+            line={"dash": "dash", "color": _MUTED},
+            annotation_text=f"Majority-class baseline: {float(base.iloc[0]):.3f}",
+            annotation_position="bottom right",
+        )
+    fig.update_yaxes(range=[0, 1.05])
+    fig.update_layout(barmode="group")
+    return apply_theme(fig, f"{label} by model and feature setting (± fold SD)", "", label)
+
+
+def fig_threshold_tradeoff(curve: pd.DataFrame, threshold: float) -> go.Figure:
+    """Precision and churn recall across thresholds, with the chosen threshold marked."""
+    if curve.empty:
+        return empty_figure("No predictions to analyse.")
+    fig = go.Figure()
+    series = (
+        ("recall", "Recall (churners caught)", C.PALETTE["vermillion"], "solid"),
+        ("precision", "Precision (flags that are right)", C.PALETTE["blue"], "dash"),
+        ("flagged_share", "Share of customers flagged", _MUTED, "dot"),
+    )
+    for col, name, color, dash in series:
+        fig.add_scatter(
+            x=curve["threshold"],
+            y=curve[col],
+            mode="lines",
+            name=name,
+            line={"color": color, "width": 2, "dash": dash},
+            hovertemplate=f"Threshold %{{x:.2f}}<br>{name}: %{{y:.1%}}<extra></extra>",
+        )
+    fig.add_vline(
+        x=threshold,
+        line={"color": _INK, "width": 1},
+        annotation_text=f"selected {threshold:.2f}",
+        annotation_position="bottom right",
+    )
+    fig.update_yaxes(range=[0, 1.02], tickformat=".0%")
+    fig.update_xaxes(range=[0, 1])
+    apply_theme(fig, "Recall vs precision as the threshold changes", "Decision threshold", "Rate")
+    fig.update_layout(
+        height=470,
+        legend={"orientation": "h", "y": -0.22, "x": 0, "xanchor": "left", "yanchor": "top"},
+        margin={"b": 120},
+    )
+    return fig
+
+
+def fig_confusion(cm: pd.DataFrame) -> go.Figure:
+    """Confusion matrix heatmap with counts and row percentages in every cell."""
+    if cm.empty:
+        return empty_figure("No predictions.")
+    z = cm.to_numpy()
+    row_pct = z / z.sum(axis=1, keepdims=True).clip(min=1)
+    text = [[f"{z[i, j]:,}<br>({row_pct[i, j]:.0%} of row)" for j in range(z.shape[1])]
+            for i in range(z.shape[0])]  # fmt: skip
+    fig = go.Figure(
+        go.Heatmap(
+            z=z,
+            x=[c.replace(" ", "<br>", 1) for c in cm.columns],
+            y=list(cm.index),
+            colorscale=C.SEQUENTIAL_SCALE,
+            text=text,
+            texttemplate="%{text}",
+            showscale=False,
+            xgap=3,
+            ygap=3,
+            hovertemplate="%{y} · %{x}<br>%{z:,} customers<extra></extra>",
+        )
+    )
+    fig.update_yaxes(autorange="reversed", showgrid=False)
+    fig.update_xaxes(showgrid=False, tickangle=0)
+    apply_theme(fig, "Confusion matrix (out-of-fold)")
+    fig.update_layout(height=340, margin={"t": 64, "l": 130, "b": 60})
+    return fig
+
+
+def fig_roc(curves: dict[str, pd.DataFrame], aucs: dict[str, float]) -> go.Figure:
+    """ROC curves per model with AUC in the legend; diagonal = random guessing."""
+    if not curves:
+        return empty_figure("No predictions.")
+    fig = go.Figure()
+    fig.add_scatter(
+        x=[0, 1],
+        y=[0, 1],
+        mode="lines",
+        name="Random / baseline (AUC 0.500)",
+        line={"color": _MUTED, "dash": "dash", "width": 1},
+        hoverinfo="skip",
+    )
+    dashes = {"Logistic Regression": "solid", "Decision Tree": "dot", "Random Forest": "dashdot"}
+    for name, pts in curves.items():
+        fig.add_scatter(
+            x=pts["fpr"],
+            y=pts["tpr"],
+            mode="lines",
+            name=f"{name} (AUC {aucs[name]:.3f})",
+            line={
+                "color": C.MODEL_COLORS.get(name, C.SINGLE_SERIES_COLOR),
+                "width": 2,
+                "dash": dashes.get(name, "solid"),
+            },
+            hovertemplate="FPR %{x:.2f}<br>TPR %{y:.2f}<extra>" + name + "</extra>",
+        )
+    fig.update_xaxes(range=[0, 1])
+    fig.update_yaxes(range=[0, 1.02])
+    apply_theme(fig, "ROC curves (out-of-fold)", "False positive rate", "True positive rate")
+    fig.update_layout(
+        height=430,
+        legend={"orientation": "v", "x": 0.98, "y": 0.02, "xanchor": "right", "yanchor": "bottom"},
+    )
+    return fig
+
+
+def fig_importance(imp: pd.DataFrame, title: str) -> go.Figure:
+    """Horizontal bars of importances (single colour) or coefficients (signed colours)."""
+    if imp.empty:
+        return empty_figure("No model.")
+    data = imp.iloc[::-1]
+    signed = (data["value"] < 0).any()
+    colors = (
+        np.where(data["value"] >= 0, C.PALETTE["vermillion"], C.PALETTE["blue"])
+        if signed
+        else C.SINGLE_SERIES_COLOR
+    )
+    fig = go.Figure(
+        go.Bar(
+            x=data["value"],
+            y=data["label"],
+            orientation="h",
+            marker={"color": colors},
+            text=[f"{v:+.3f}" if signed else f"{v:.3f}" for v in data["value"]],
+            textposition="auto",  # inside long bars, outside short ones (no axis overlap)
+            cliponaxis=False,
+            hovertemplate="%{y}<br>%{x:.3f}<extra></extra>",
+        )
+    )
+    x_title = "Coefficient (+ raises churn risk)" if signed else "Importance (impurity)"
+    lo, hi = float(min(data["value"].min(), 0)), float(max(data["value"].max(), 0))
+    pad = 0.35 * max(hi - lo, 1e-9)
+    fig.update_xaxes(range=[lo - (pad if lo < 0 else 0), hi + pad])
+    if signed:
+        fig.add_vline(x=0, line={"color": _MUTED, "width": 1})
+    apply_theme(fig, title, x_title, "")
+    fig.update_layout(height=120 + 30 * len(data), margin={"l": 220, "r": 70})
+    return fig

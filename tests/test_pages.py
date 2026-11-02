@@ -72,3 +72,38 @@ def test_customer_segments_page():
     assert m["Champions"] == "630"
     at.slider(key="seg_k").set_value(3).run()
     assert not at.exception and _metrics(at)["Selected k"] == "3"
+
+
+@pytest.mark.parametrize(
+    "page",
+    [
+        "pages/1_Data_Ingestion.py",
+        "pages/5_Model_Evaluation.py",
+        "pages/6_Early_Warning.py",
+        "pages/7_Methodology.py",
+    ],
+)
+def test_m5_pages_run(page):
+    at = _app()
+    at.switch_page(page).run()
+    assert not at.exception and not at.error
+
+
+def test_model_evaluation_threshold_and_balance():
+    at = _app()
+    at.switch_page("pages/5_Model_Evaluation.py").run()
+    m = _metrics(at)
+    assert m["Customers in training set"] == "3,364"
+    at.slider(key="me_threshold").set_value(0.3).run()
+    at.toggle(key="me_balanced").set_value(True).run()
+    assert not at.exception and not at.error
+
+
+def test_early_warning_lists_customers():
+    at = _app()
+    at.switch_page("pages/6_Early_Warning.py").run()
+    assert not at.exception and not at.error
+    if config.MODEL_FILE.exists():
+        m = _metrics(at)
+        assert int(m["Customers scored"].replace(",", "")) > 0
+        assert len(at.dataframe) >= 1

@@ -15,7 +15,7 @@ from dataclasses import dataclass
 import pandas as pd
 import streamlit as st
 
-from src import analytics, config, currency, ingestion, segmentation
+from src import analytics, config, currency, explain, ingestion, modeling, segmentation
 
 logger = logging.getLogger(__name__)
 _W = "_filter_widget_"  # widget-key prefix
@@ -25,9 +25,13 @@ SCOPE_LABELS = {"all": "All customers", "identified": "Identified only", "guest"
 # Sidebar menu: (script path relative to the repo root, label, icon).
 NAV_PAGES: tuple[tuple[str, str, str], ...] = (
     ("app.py", "Home", "🏠"),
+    ("pages/1_Data_Ingestion.py", "Data Ingestion", "📥"),
     ("pages/2_Executive_Overview.py", "Executive Overview", "📈"),
     ("pages/3_Sales_Trends.py", "Sales Trends", "📅"),
     ("pages/4_Customer_Segments.py", "Customer Segments", "👥"),
+    ("pages/5_Model_Evaluation.py", "Model Evaluation", "🧪"),
+    ("pages/6_Early_Warning.py", "Early Warning", "🚨"),
+    ("pages/7_Methodology.py", "Methodology", "📖"),
 )
 
 
@@ -379,3 +383,77 @@ def segment(page: PageData, k: int | None = None) -> segmentation.SegmentationRe
     except currency.CurrencyError:
         return result
     return segmentation.with_display_currency(result, converted)
+
+
+# --------------------------------------------------------------------------- #
+# Modelling helpers (cached)
+# --------------------------------------------------------------------------- #
+
+
+def dataset_key(active: ActiveDataset) -> str:
+    """Stable cache key for the active dataset."""
+    return active.checksum or f"{active.label}:{len(active.data)}"
+
+
+@st.cache_resource(show_spinner="Building the churn dataset…", max_entries=4)
+def churn_dataset(key: str, _data: pd.DataFrame) -> modeling.ChurnDataset:
+    """Build (once per dataset) the churn training table; ``_data`` is not hashed."""
+    return modeling.build_dataset(_data)
+
+
+@st.cache_resource(
+    show_spinner="Cross-validating models (5 folds × 3 models × 2 settings)…", max_entries=8
+)
+def evaluation(
+    key: str, class_weight: str | None, _ds: modeling.ChurnDataset
+) -> dict[tuple[str, str], modeling.CVResult]:
+    """Cross-validate every model and setting (cached per dataset and class weight)."""
+    return modeling.evaluate_all(_ds, class_weight)
+
+
+def saved_model() -> modeling.TrainedModel | None:
+    """Return the persisted churn model, if any (reloaded when the file changes)."""
+    path = config.MODEL_FILE
+    stamp = path.stat().st_mtime if path.exists() else 0.0
+    return _load_model(stamp)
+
+
+@st.cache_resource(show_spinner=False, max_entries=2)
+def _load_model(stamp: float) -> modeling.TrainedModel | None:
+    return modeling.load_model()
+
+
+@st.cache_data(show_spinner="Scoring customers and explaining predictions…", max_entries=8)
+def score_and_explain(
+    model_stamp: str,
+    key: str,
+    money_key: str,
+    _model: modeling.TrainedModel,
+    _data: pd.DataFrame,
+    _cur: str = config.CURRENCY_SYMBOL,
+    _factor: pd.Series | float = 1.0,
+) -> pd.DataFrame:
+    """Churn probability, risk tier and top reasons per customer (cached).
+
+    Cached per (model, dataset, display currency); underscored arguments are
+    not hashed. Monetary values in reasons are shown in the display currency.
+    """
+    scored = modeling.score_current(_model, _data)
+    if scored.empty:
+        return scored
+    reasons = explain.reason_codes(_model, scored, cur=_cur, monetary_factor=_factor)
+    return scored.join(reasons)
+
+
+def money_factor(page: PageData) -> pd.Series | float:
+    """Per-customer factor converting base-currency spend to the display currency."""
+    if page.money.is_base:
+        return 1.0
+    sales = modeling.completed_customer_sales(page.active.data)
+    try:
+        converted = currency.convert(sales, page.money, load_fx_rates())
+    except currency.CurrencyError:
+        return 1.0
+    base = sales.groupby(config.COL_CUSTOMER)[config.COL_REVENUE].sum()
+    shown = converted.groupby(config.COL_CUSTOMER)[config.COL_REVENUE].sum()
+    return (shown / base.replace(0, float("nan"))).fillna(1.0)
