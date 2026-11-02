@@ -22,6 +22,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+import joblib
 import numpy as np
 import pandas as pd
 
@@ -450,8 +451,8 @@ def prepare(df: pd.DataFrame, date_format: str | None) -> tuple[pd.DataFrame, Cl
 
     Steps: alias renames, text stripping, typed parsing, dropping rows with
     unparseable required values, dropping exact duplicate rows, then derived
-    columns ``Revenue``, ``IsCancellation``, ``IsAdjustment``, ``HasCustomer``
-    and ``IsProduct``. Nothing is imputed.
+    columns ``Revenue``, ``IsCancellation``, ``IsAdjustment``, ``HasCustomer``,
+    ``IsProduct`` and ``IsReversed``. Nothing is imputed.
 
     Returns:
         ``(clean_table, cleaning_log)``; the input frame is not modified.
@@ -494,19 +495,50 @@ def prepare(df: pd.DataFrame, date_format: str | None) -> tuple[pd.DataFrame, Cl
     ordered = [c for c in (*config.ALL_COLUMNS, C.COL_REVENUE, C.COL_IS_CANCEL, "IsAdjustment",
                            C.COL_HAS_CUSTOMER, C.COL_IS_PRODUCT) if c in out.columns]  # fmt: skip
     out = out[ordered].sort_values(C.COL_DATE, kind="stable").reset_index(drop=True)
+    out[C.COL_IS_REVERSED] = mark_reversed_sales(out)
     log.rows_out = len(out)
     return out, log
+
+
+def mark_reversed_sales(df: pd.DataFrame) -> pd.Series:
+    """Flag sale lines that a later cancellation line exactly reverses.
+
+    A cancellation reverses a sale when both have the same customer, stock code
+    and absolute quantity, and the sale is not later than the cancellation.
+    Each cancellation is matched to at most one sale (the most recent eligible
+    one) and each sale to at most one cancellation. Guest lines (no customer)
+    cannot be matched reliably and are never flagged.
+
+    Returns:
+        Boolean Series aligned to ``df`` (True = sale later reversed).
+    """
+    flag = pd.Series(False, index=df.index)
+    key = [C.COL_CUSTOMER, C.COL_STOCK, "_absqty"]
+    base = df[df[C.COL_HAS_CUSTOMER]].assign(_absqty=lambda d: d[C.COL_QTY].abs())
+    cancels = base.loc[base[C.COL_IS_CANCEL] & (base[C.COL_QTY] < 0), [*key, C.COL_DATE]]
+    sales = base.loc[~base[C.COL_IS_CANCEL] & (base[C.COL_QTY] > 0), [*key, C.COL_DATE]]
+    if cancels.empty or sales.empty:
+        return flag
+    pairs = cancels.reset_index(names="cancel_idx").merge(
+        sales.reset_index(names="sale_idx"), on=key, suffixes=("_c", "_s")
+    )
+    pairs = pairs[pairs[f"{C.COL_DATE}_s"] <= pairs[f"{C.COL_DATE}_c"]]
+    pairs = pairs.sort_values(["cancel_idx", f"{C.COL_DATE}_s"], ascending=[True, False])
+    pairs = pairs.drop_duplicates("cancel_idx").drop_duplicates("sale_idx")
+    flag.loc[pairs["sale_idx"].to_numpy()] = True
+    return flag
 
 
 def sales_lines(df: pd.DataFrame) -> pd.Series:
     """Boolean mask of genuine product sales lines.
 
     A sales line is not a cancellation or adjustment, has positive quantity and
-    price, and is a product (not postage/fees).
+    price, is a product (not postage/fees) and was not later reversed by a
+    matching cancellation (see :func:`mark_reversed_sales`).
     """
     return (
         ~df[C.COL_IS_CANCEL] & ~df["IsAdjustment"] & df[C.COL_IS_PRODUCT]
-        & (df[C.COL_QTY] > 0) & (df[C.COL_PRICE] > 0)
+        & (df[C.COL_QTY] > 0) & (df[C.COL_PRICE] > 0) & ~df[C.COL_IS_REVERSED]
     )  # fmt: skip
 
 
@@ -566,6 +598,34 @@ def load_bundled_dataset(path: Path = config.RAW_FILE) -> LoadResult:
     if result.report.n_rows and result.report.n_rows != config.EXPECTED_ROWS:
         result.report.add("warning", None, f"Expected {config.EXPECTED_ROWS:,} rows for "
                           f"{config.DATASET_NAME}, found {result.report.n_rows:,}.")  # fmt: skip
+    return result
+
+
+CACHE_VERSION = 2  # bump when prepare() output changes
+
+
+def load_bundled_cached(
+    path: Path = config.RAW_FILE, cache: Path = config.PROCESSED_CACHE
+) -> LoadResult:
+    """Load the bundled dataset, reusing a joblib cache keyed by the raw checksum.
+
+    The cache is rebuilt whenever the raw file's SHA-256 or :data:`CACHE_VERSION`
+    changes, so cached results always match a fresh :func:`load_bundled_dataset`.
+    """
+    if not path.exists():
+        return load_bundled_dataset(path)
+    checksum = sha256_file(path)
+    if cache.exists():
+        try:
+            payload = joblib.load(cache)
+            if payload.get("checksum") == checksum and payload.get("version") == CACHE_VERSION:
+                return payload["result"]
+        except Exception:  # noqa: BLE001 - a corrupt cache is simply rebuilt
+            pass
+    result = load_bundled_dataset(path)
+    if result.is_valid:
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        joblib.dump({"checksum": checksum, "version": CACHE_VERSION, "result": result}, cache)
     return result
 
 
@@ -641,6 +701,8 @@ def data_quality_summary(df: pd.DataFrame, log: CleaningLog | None = None) -> di
         "negative_price_lines": int((df[C.COL_PRICE] < 0).sum()),
         "negative_qty_non_cancel_lines": int(((df[C.COL_QTY] < 0) & ~df[C.COL_IS_CANCEL]).sum()),
         "non_product_lines": int((~df[C.COL_IS_PRODUCT]).sum()),
+        "reversed_sale_lines": int(df[C.COL_IS_REVERSED].sum()),
+        "reversed_sale_value": float(df.loc[df[C.COL_IS_REVERSED], C.COL_REVENUE].sum()),
         "sales_lines": int(sales.sum()),
         "gross_product_revenue": float(df.loc[sales, C.COL_REVENUE].sum()),
         "cancelled_revenue": float(df.loc[df[C.COL_IS_CANCEL], C.COL_REVENUE].sum()),
@@ -677,6 +739,8 @@ def format_quality_summary(s: dict[str, Any]) -> str:
         f"{s['negative_price_lines']:,}",
         f"Negative-quantity lines on normal invoices: {s['negative_qty_non_cancel_lines']:,}",
         f"Non-product lines (postage, fees, ...): {s['non_product_lines']:,}",
+        f"Sales later reversed by a matching cancellation: {s['reversed_sale_lines']:,} lines "
+        f"({cur}{s['reversed_sale_value']:,.2f}); excluded from gross sales",
         f"Product sales lines: {s['sales_lines']:,} | gross product revenue: "
         f"{cur}{s['gross_product_revenue']:,.2f} "
         f"({s['customer_share_of_gross_revenue']:.1%} from identified customers)",

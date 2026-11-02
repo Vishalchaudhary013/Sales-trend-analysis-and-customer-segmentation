@@ -27,6 +27,8 @@ DB_PATH: Final[Path] = DATA_DIR / "app.db"
 RAW_FILE: Final[Path] = RAW_DIR / "online_retail.csv"  # canonical bundled raw file
 PROCESSED_TRANSACTIONS: Final[Path] = PROCESSED_DIR / "transactions_clean.csv"
 PROCESSED_CUSTOMERS: Final[Path] = PROCESSED_DIR / "customers_rfm.csv"
+PROCESSED_CACHE: Final[Path] = PROCESSED_DIR / "transactions_clean.joblib"  # fast app load
+LARGE_LINE_QUANTITY: Final[int] = 10_000  # lines at/above this are surfaced as outliers
 
 # --------------------------------------------------------------------------- #
 # Data source: UCI Online Retail (dataset 352)
@@ -132,6 +134,8 @@ COL_REVENUE: Final[str] = "Revenue"
 COL_IS_CANCEL: Final[str] = "IsCancellation"
 COL_HAS_CUSTOMER: Final[str] = "HasCustomer"
 COL_IS_PRODUCT: Final[str] = "IsProduct"
+COL_IS_ADJUST: Final[str] = "IsAdjustment"
+COL_IS_REVERSED: Final[str] = "IsReversed"  # sale later reversed by a matching cancellation
 
 # --------------------------------------------------------------------------- #
 # RFM segmentation

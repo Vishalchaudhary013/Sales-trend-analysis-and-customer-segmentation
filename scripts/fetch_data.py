@@ -10,7 +10,8 @@ Usage::
 The original download is kept unchanged in ``data/raw/original/``; a canonical
 CSV is written to ``data/raw/online_retail.csv``. The script then validates and
 cleans the data, writes ``data/processed/transactions_clean.csv`` and prints a
-data-quality summary.
+data-quality summary. A joblib cache of the clean table is written alongside
+for fast dashboard start-up.
 """
 
 from __future__ import annotations
@@ -168,7 +169,8 @@ def main(argv: list[str] | None = None) -> int:
               f"\n  raw CSV:  {config.RAW_FILE}")  # fmt: skip
 
     print("\nValidating and cleaning ...")
-    result = ingestion.load_bundled_dataset()
+    config.PROCESSED_CACHE.unlink(missing_ok=True)  # always rebuild from the raw file
+    result = ingestion.load_bundled_cached()
     report = result.report
     print(f"Validation [{'OK' if report.is_valid else 'FAILED'}] {report.source}: "
           f"{report.n_rows:,} rows, {report.n_columns} columns, date format "

@@ -30,3 +30,10 @@ def make_transactions(n_invoices: int = 60, seed: int = 0) -> pd.DataFrame:
 @pytest.fixture
 def raw() -> pd.DataFrame:
     return make_transactions()
+
+
+@pytest.fixture
+def clean():
+    from src import ingestion
+
+    return ingestion.load_table(make_transactions(120, seed=3), "synthetic").data
