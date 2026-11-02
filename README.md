@@ -98,6 +98,7 @@ flowchart LR
 ├── pages/                      # 1_Data_Ingestion … 7_Methodology (UI only, no business logic)
 ├── src/
 │   ├── config.py               # paths, schema, constants, colours (all configuration)
+│   ├── settings.py             # optional .env / environment-variable overrides
 │   ├── ingestion.py            # read, validate, clean, flag, checksums, capabilities
 │   ├── analytics.py            # filters, KPIs, time series, mix, customer dynamics
 │   ├── currency.py             # daily-rate currency conversion
@@ -115,6 +116,7 @@ flowchart LR
 ├── models/                     # saved model + JSON metadata (git-ignored)
 ├── reports/{figures,metrics}/  # exported PNGs, metrics.json / metrics.md (git-ignored)
 ├── docs/                       # DEPLOYMENT.md, screenshots/
+├── .env.example                # template for optional local settings (.env is git-ignored)
 └── .streamlit/config.toml      # theme, upload limit, labelled menu
 ```
 
@@ -162,6 +164,60 @@ If downloads are blocked, follow the printed instructions, or point the script a
 ```bash
 python scripts/fetch_data.py --source "path/to/online+retail.zip"
 ```
+
+### Local settings (`.env`, optional)
+
+The app works without any configuration and needs **no secrets**. To change local settings, such as the default display currency, risk-tier cut-offs, churn window or folder locations, copy the template and edit it:
+
+Windows PowerShell:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Windows CMD:
+
+```bat
+copy .env.example .env
+```
+
+macOS / Linux:
+
+```bash
+cp .env.example .env
+```
+
+Open `.env`, uncomment and change only the lines you need, for example:
+
+```dotenv
+DEFAULT_DISPLAY_CURRENCY=INR
+RISK_HIGH=0.75
+CHURN_HORIZON_DAYS=60
+```
+
+Then restart the app (`Ctrl+C`, then `streamlit run app.py`).
+
+| Setting | Default | Allowed |
+|---|---|---|
+| `DATA_DIR`, `MODELS_DIR`, `REPORTS_DIR` | `data`, `models`, `reports` | any folder (relative to the project or absolute) |
+| `DB_PATH` | `data/app.db` | SQLite file path |
+| `DEFAULT_DISPLAY_CURRENCY` | `GBP` | any of the 22 currencies with published rates |
+| `LARGE_LINE_QUANTITY` | `10000` | ≥ 1 |
+| `EXPORT_DPI` | `300` | 72–600 |
+| `CHURN_HORIZON_DAYS` | `90` | 30–180 |
+| `DEFAULT_THRESHOLD` | `0.5` | between 0 and 1 |
+| `RISK_HIGH` / `RISK_MEDIUM` | `0.7` / `0.4` | between 0 and 1, and Medium < High |
+| `TOP_N_REASONS` | `3` | 1–5 |
+| `RANDOM_STATE` | `42` | ≥ 0 |
+
+How the settings behave:
+- **Precedence:** variables already set in your terminal override `.env`, which overrides the defaults.
+- **Visibility:** the Home page lists the `.env` settings that are active.
+- **Invalid values:** the default is used, and every page shows a red message naming the variable. Command-line scripts print a warning.
+- **Git:** `.env` is git-ignored; `.env.example` is the committed template.
+- **No extra package needed:** the file is read by a small built-in parser, so `python-dotenv` isn't required.
+- **Retraining:** after changing `CHURN_HORIZON_DAYS`, `RANDOM_STATE` or `DEFAULT_THRESHOLD`, run `python scripts/train.py` (or save a model on Model Evaluation) so the saved model matches.
+- **Tests:** the test suite ignores `.env`, so personal settings never change test results.
 
 ### Deploying online
 Step-by-step guide for **Streamlit Community Cloud** (via GitHub): [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).

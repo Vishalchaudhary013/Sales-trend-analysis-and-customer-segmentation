@@ -114,9 +114,11 @@ with ui.friendly_errors("scoring customers"):
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Customers scored", f"{len(scored):,}")
     c2.metric(f"Predicted to churn (p ≥ {threshold:.2f})", f"{int(scored.predicted_churn.sum()):,}")
-    c3.metric("🔴 High risk (≥ 0.70)", f"{tiers['High']:,}")
-    c4.metric("🟠 Medium risk (0.40–0.70)", f"{tiers['Medium']:,}")
-    c5.metric("🔵 Low risk (< 0.40)", f"{tiers['Low']:,}")
+    c3.metric(f"🔴 High risk (≥ {config.RISK_HIGH:.2f})", f"{tiers['High']:,}")
+    c4.metric(
+        f"🟠 Medium risk ({config.RISK_MEDIUM:.2f}–{config.RISK_HIGH:.2f})", f"{tiers['Medium']:,}"
+    )
+    c5.metric(f"🔵 Low risk (< {config.RISK_MEDIUM:.2f})", f"{tiers['Low']:,}")
     at_risk_spend = spend[scored["predicted_churn"]].sum()
     st.caption(
         f"Customers predicted to churn spent {ui.fmt_money(at_risk_spend, cur=page.cur)} "

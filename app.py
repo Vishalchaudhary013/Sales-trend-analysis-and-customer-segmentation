@@ -29,6 +29,11 @@ def home() -> None:
                 f"({'UCI benchmark' if active.mode == 'bundled' else 'custom upload'})"
                 + (f" · SHA-256 `{active.checksum[:12]}…`" if active.checksum else "")
             )
+            if config.ENV_APPLIED:
+                st.info(
+                    "Local settings from `.env` are active: "
+                    + ", ".join(f"`{k}={v}`" for k, v in config.ENV_APPLIED.items())
+                )
             caps = ingestion.assess_capabilities(data)
             unavailable = {k: v for k, v in caps.items() if v}
             if unavailable:

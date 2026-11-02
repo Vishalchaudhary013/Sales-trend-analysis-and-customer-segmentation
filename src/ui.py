@@ -38,6 +38,11 @@ NAV_PAGES: tuple[tuple[str, str, str], ...] = (
 def page_setup(title: str, icon: str, heading: str | None = None) -> None:
     """Configure the page, render the sidebar menu and the page heading."""
     st.set_page_config(page_title=f"{title} · {config.APP_TITLE}", page_icon=icon, layout="wide")
+    for problem in config.SETTINGS_ERRORS:
+        st.error(
+            f"⚙ Settings problem: {problem} The default is used instead — fix `.env` "
+            "(see `.env.example`) and restart the app."
+        )
     with st.sidebar:
         for path, label, page_icon in NAV_PAGES:
             st.page_link(path, label=label, icon=page_icon)
@@ -159,7 +164,9 @@ def sidebar_currency() -> currency.CurrencySetting:
     """
     rates = load_fx_rates()
     codes = currency.available_currencies(rates)
-    stored = st.session_state.get(config.CURRENCY_STATE_KEY, currency.CurrencySetting())
+    stored = st.session_state.get(
+        config.CURRENCY_STATE_KEY, currency.CurrencySetting(config.DEFAULT_DISPLAY_CURRENCY)
+    )
     base = config.BASE_CURRENCY
 
     def label(code: str) -> str:

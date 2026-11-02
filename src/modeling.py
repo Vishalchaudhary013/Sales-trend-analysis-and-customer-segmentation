@@ -554,7 +554,7 @@ def best_model(table: pd.DataFrame, setting: str) -> str:
 
 
 def risk_tier(p: float) -> str:
-    """High ≥ 0.7, Medium 0.4–0.7, Low < 0.4 (thresholds in config)."""
+    """Return High (≥ RISK_HIGH), Medium (≥ RISK_MEDIUM) or Low; thresholds in config."""
     if p >= C.RISK_HIGH:
         return "High"
     if p >= C.RISK_MEDIUM:

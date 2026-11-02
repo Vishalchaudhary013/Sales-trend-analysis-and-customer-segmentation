@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import hashlib
+import os
 
 import numpy as np
 import pandas as pd
 import pytest
+
+# Personal .env overrides must never change test expectations.
+os.environ["SALES_DASHBOARD_IGNORE_DOTENV"] = "1"
 
 
 def make_transactions(n_invoices: int = 60, seed: int = 0) -> pd.DataFrame:

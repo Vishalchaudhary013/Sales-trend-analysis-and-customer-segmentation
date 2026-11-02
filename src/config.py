@@ -10,25 +10,34 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final
 
+from src import settings
+
 # --------------------------------------------------------------------------- #
 # Paths (relative to the repository root; pathlib only)
 # --------------------------------------------------------------------------- #
 ROOT_DIR: Final[Path] = Path(__file__).resolve().parent.parent
-DATA_DIR: Final[Path] = ROOT_DIR / "data"
+ENV_FILE: Final[Path] = ROOT_DIR / ".env"
+ENV_APPLIED: Final[dict[str, str]] = settings.safe_load_dotenv(ENV_FILE)  # optional local overrides
+DATA_DIR: Final[Path] = settings.safe(settings.env_path, "DATA_DIR", ROOT_DIR / "data", ROOT_DIR)
 RAW_DIR: Final[Path] = DATA_DIR / "raw"
 UPLOADS_DIR: Final[Path] = RAW_DIR / "uploads"  # original uploads, preserved unchanged
 PROCESSED_DIR: Final[Path] = DATA_DIR / "processed"
-MODELS_DIR: Final[Path] = ROOT_DIR / "models"
-REPORTS_DIR: Final[Path] = ROOT_DIR / "reports"
+MODELS_DIR: Final[Path] = settings.safe(
+    settings.env_path, "MODELS_DIR", ROOT_DIR / "models", ROOT_DIR
+)
+REPORTS_DIR: Final[Path] = settings.safe(
+    settings.env_path, "REPORTS_DIR", ROOT_DIR / "reports", ROOT_DIR
+)
 FIGURES_DIR: Final[Path] = REPORTS_DIR / "figures"
 METRICS_DIR: Final[Path] = REPORTS_DIR / "metrics"
-DB_PATH: Final[Path] = DATA_DIR / "app.db"
+DB_PATH: Final[Path] = settings.safe(settings.env_path, "DB_PATH", DATA_DIR / "app.db", ROOT_DIR)
 
 RAW_FILE: Final[Path] = RAW_DIR / "online_retail.csv"  # canonical bundled raw file
 PROCESSED_TRANSACTIONS: Final[Path] = PROCESSED_DIR / "transactions_clean.csv"
 PROCESSED_CUSTOMERS: Final[Path] = PROCESSED_DIR / "customers_rfm.csv"
 PROCESSED_CACHE: Final[Path] = PROCESSED_DIR / "transactions_clean.joblib"  # fast app load
-LARGE_LINE_QUANTITY: Final[int] = 10_000  # lines at/above this are surfaced as outliers
+# Lines at/above this absolute quantity are surfaced as outliers.
+LARGE_LINE_QUANTITY: Final[int] = settings.safe(settings.env_int, "LARGE_LINE_QUANTITY", 10_000, 1)
 
 # --------------------------------------------------------------------------- #
 # Data source: UCI Online Retail (dataset 352)
@@ -189,10 +198,11 @@ CLUSTER_COLORS: Final[tuple[str, ...]] = (
 # --------------------------------------------------------------------------- #
 # Churn early-warning model
 # --------------------------------------------------------------------------- #
-RANDOM_STATE: Final[int] = 42
+RANDOM_STATE: Final[int] = settings.safe(settings.env_int, "RANDOM_STATE", 42, 0, 2**32 - 1)
 CV_FOLDS: Final[int] = 5
 CV_SHUFFLE: Final[bool] = True
-CHURN_HORIZON_DAYS: Final[int] = 90  # label window at the end of the data
+# Label window at the end of the data (also the feature cut-off offset).
+CHURN_HORIZON_DAYS: Final[int] = settings.safe(settings.env_int, "CHURN_HORIZON_DAYS", 90, 30, 180)
 CHURN_POSITIVE_LABEL: Final[str] = "churned"  # churn = 1: no purchase in the horizon
 CHURN_RECENT_WINDOW_DAYS: Final[int] = 90  # "recent activity" features before the cut-off
 # Feature settings (A/B comparison, mirroring the original brief's design).
@@ -234,10 +244,16 @@ FEATURE_LABELS: Final[dict[str, str]] = {
 DT_MAX_DEPTH: Final[int] = 5
 RF_N_ESTIMATORS: Final[int] = 300
 LR_MAX_ITER: Final[int] = 5000
-DEFAULT_THRESHOLD: Final[float] = 0.5
-RISK_HIGH: Final[float] = 0.7
-RISK_MEDIUM: Final[float] = 0.4
-TOP_N_REASONS: Final[int] = 3
+DEFAULT_THRESHOLD: Final[float] = settings.safe(
+    settings.env_float, "DEFAULT_THRESHOLD", 0.5, 0.0, 1.0
+)
+RISK_HIGH: Final[float] = settings.safe(settings.env_float, "RISK_HIGH", 0.7, 0.0, 1.0)
+RISK_MEDIUM: Final[float] = settings.safe(settings.env_float, "RISK_MEDIUM", 0.4, 0.0, 1.0)
+if not RISK_MEDIUM < RISK_HIGH:
+    settings.report(f"RISK_MEDIUM ({RISK_MEDIUM}) must be lower than RISK_HIGH ({RISK_HIGH}).")
+    RISK_HIGH, RISK_MEDIUM = 0.7, 0.4  # fall back to both defaults
+SETTINGS_ERRORS: Final[list[str]] = settings.ERRORS
+TOP_N_REASONS: Final[int] = settings.safe(settings.env_int, "TOP_N_REASONS", 3, 1, 5)
 
 # --------------------------------------------------------------------------- #
 # Visual theme (Okabe-Ito based, colour-blind safe)
@@ -271,7 +287,7 @@ DIVERGING_SCALE: Final[str] = "RdBu"
 FONT_FAMILY: Final[str] = "Inter, Segoe UI, Helvetica, Arial, sans-serif"
 BASE_FONT_SIZE: Final[int] = 14
 PLOT_TEMPLATE: Final[str] = "plotly_white"
-EXPORT_DPI: Final[int] = 300
+EXPORT_DPI: Final[int] = settings.safe(settings.env_int, "EXPORT_DPI", 300, 72, 600)
 CURRENCY_SYMBOL: Final[str] = "£"  # symbol of the base (source) currency
 
 # --------------------------------------------------------------------------- #
@@ -316,6 +332,10 @@ FX_MODES: Final[dict[str, str]] = {
     "average": "Single average rate over the data period",
 }
 CURRENCY_STATE_KEY: Final[str] = "currency_setting"
+# Currency selected when the dashboard opens (must have published rates; see CURRENCIES).
+DEFAULT_DISPLAY_CURRENCY: Final[str] = settings.safe(
+    settings.env_choice, "DEFAULT_DISPLAY_CURRENCY", BASE_CURRENCY, tuple(CURRENCIES)
+)
 
 # --------------------------------------------------------------------------- #
 # App
