@@ -313,7 +313,7 @@ Running `python scripts/train.py` regenerates the full table, including fold sta
 
 ## Testing and quality
 
-- **pytest:** 120+ tests covering ingestion, analytics, currency, segmentation, modelling, explanations, storage, figure export, the CLI scripts, and headless runs of every page (`streamlit.testing`). **Coverage of `src/` is 96%.** Tests that need the real dataset are skipped automatically if it hasn't been downloaded.
+- **pytest:** 120+ tests covering ingestion, analytics, currency, segmentation, modelling, explanations, storage, figure export, the CLI scripts, and headless runs of every page (`streamlit.testing`). **Coverage of `src/` is 96%** with the dataset downloaded (126 tests). On a fresh checkout without data, the 16 data-dependent tests skip automatically and coverage is 81% (110 tests).
 - **Real-data checks:** reference figures such as 541,909 rows, 25,900 invoices, 4,372 customers, k = 5, a churn rate of 43% and the 2011 GBP/USD average of 1.604 are asserted against the real files.
 - **ruff:** lint (pycodestyle, pyflakes, isort, bugbear, pyupgrade, naming, simplify, pydocstyle) and format are both clean.
 - **Machine-learning hygiene:**
