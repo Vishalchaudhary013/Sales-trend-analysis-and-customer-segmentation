@@ -4,7 +4,7 @@ import streamlit as st
 
 from src import analytics, config, ui, visuals
 
-st.title("Sales Trends")
+ui.page_setup("Sales Trends", "📅")
 page = ui.load_page_data()
 
 

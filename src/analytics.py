@@ -406,3 +406,50 @@ def cancellation_trend(scope: pd.DataFrame) -> pd.DataFrame:
     agg["period_start"] = agg.index.start_time
     agg["period_label"] = agg.index.strftime("%b %Y")
     return agg.reset_index(drop=True)[cols]
+
+
+# --------------------------------------------------------------------------- #
+# Part-to-whole breakdowns (donut charts)
+# --------------------------------------------------------------------------- #
+
+
+def _top_with_other(values: pd.Series, top_n: int) -> pd.DataFrame:
+    """Keep the ``top_n`` largest entries and fold the rest into ``"Other"``."""
+    values = values[values > 0].sort_values(ascending=False)
+    head = values.head(top_n)
+    rest = values.iloc[top_n:].sum()
+    if rest > 0:
+        head = pd.concat([head, pd.Series({"Other": rest})])
+    total = head.sum()
+    out = head.rename("value").rename_axis("label").reset_index()
+    out["share"] = out["value"] / total if total else np.nan
+    return out
+
+
+def revenue_share(lines: pd.DataFrame, by: str = C.COL_COUNTRY,
+                  top_n: int = config.MAX_PIE_SLICES - 1) -> pd.DataFrame:  # fmt: skip
+    """Revenue share by ``by`` (top ``top_n`` + "Other").
+
+    Returns:
+        Columns ``label, value, share``; empty when ``by`` is missing.
+    """
+    if by not in lines.columns or lines.empty:
+        return pd.DataFrame(columns=["label", "value", "share"])
+    return _top_with_other(lines.groupby(by)[C.COL_REVENUE].sum(), top_n)
+
+
+def revenue_by_customer_type(lines: pd.DataFrame) -> pd.DataFrame:
+    """Revenue from identified customers versus guest (no CustomerID) sales."""
+    if lines.empty:
+        return pd.DataFrame(columns=["label", "value", "share"])
+    kind = np.where(lines[C.COL_HAS_CUSTOMER], "Identified customers", "Guest sales")
+    return _top_with_other(lines.groupby(kind)[C.COL_REVENUE].sum(), 2)
+
+
+def invoice_status_mix(scope: pd.DataFrame) -> pd.DataFrame:
+    """Count of completed versus cancelled invoices (adjustments excluded)."""
+    data = scope.loc[~scope[C.COL_IS_ADJUST]].drop_duplicates(C.COL_INVOICE)
+    if data.empty:
+        return pd.DataFrame(columns=["label", "value", "share"])
+    kind = np.where(data[C.COL_IS_CANCEL], "Cancelled", "Completed")
+    return _top_with_other(pd.Series(kind).value_counts().astype(float), 2)

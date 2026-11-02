@@ -42,6 +42,9 @@ FIGURE_DESCRIPTIONS: dict[str, str] = {
     "first purchase month. * The first month of data counts everyone as new (no earlier "
     "history).",
     "cancellations": "Share of invoices that are cancellations, per month.",
+    "mix_country": "Share of revenue by customer country (top 5, the rest grouped as Other).",
+    "mix_customer": "Share of revenue from identified customers versus guest checkouts.",
+    "mix_invoices": "Share of invoices that were completed versus cancelled.",
 }
 
 
@@ -295,3 +298,69 @@ def fig_cancellations(df: pd.DataFrame) -> go.Figure:
     fig.update_yaxes(tickformat=".0%", rangemode="tozero")
     fig.update_xaxes(type="category")
     return apply_theme(fig, "Cancellation rate per month", "Month", "Share of invoices cancelled")
+
+
+def fig_donut(mix: pd.DataFrame, title: str, value_kind: str = "money",
+              centre: str | None = None) -> go.Figure:  # fmt: skip
+    """Donut (circle) chart for a part-to-whole breakdown of at most six slices.
+
+    Slices use the fixed categorical order (``"Other"`` is always grey), are
+    separated by white gaps and carry direct "label + %" text, so identity
+    never depends on colour alone.
+
+    Args:
+        mix: Output of an analytics breakdown (``label, value, share``).
+        title: Chart title.
+        value_kind: ``"money"`` or ``"count"`` (hover formatting).
+        centre: Optional text in the hole (e.g. the total).
+    """
+    if mix.empty or mix["value"].sum() <= 0:
+        return empty_figure("No data for this breakdown in the current view.")
+    if len(mix) > C.MAX_PIE_SLICES:
+        raise ValueError(f"A donut supports at most {C.MAX_PIE_SLICES} slices; got {len(mix)}.")
+    colors, i = [], 0
+    for label in mix["label"]:
+        if label == "Other":
+            colors.append(C.OTHER_COLOR)
+        else:
+            colors.append(C.CATEGORICAL_ORDER[i % len(C.CATEGORICAL_ORDER)])
+            i += 1
+    value_fmt = f"{CUR}%{{value:,.0f}}" if value_kind == "money" else "%{value:,.0f}"
+    # Legend entries carry the share so every slice is identified in text.
+    labels = [f"{lbl} · {sh:.1%}" for lbl, sh in zip(mix["label"], mix["share"], strict=True)]
+    fig = go.Figure(
+        go.Pie(
+            labels=labels,
+            values=mix["value"],
+            hole=0.55,
+            sort=False,
+            direction="clockwise",
+            marker={"colors": colors, "line": {"color": "white", "width": 2}},
+            texttemplate="%{percent:.0%}",
+            textposition="inside",
+            insidetextorientation="horizontal",
+            textfont={"size": 13, "color": "white"},
+            hovertemplate=f"%{{label}}<br>{value_fmt}<br>%{{percent:.1%}}<extra></extra>",
+        )
+    )
+    if centre:
+        fig.add_annotation(text=centre, showarrow=False, font={"size": 15, "color": _INK})
+    apply_theme(fig, title)
+    # Slices too small for their label show no text (rather than overlapping);
+    # the legend and hover still identify them.
+    fig.update_layout(
+        height=420, showlegend=True, margin={"l": 24, "r": 24, "t": 64, "b": 24},
+        uniformtext={"minsize": 11, "mode": "hide"},
+        legend={"orientation": "v", "y": 0.5, "x": 1.02, "xanchor": "left", "yanchor": "middle"},
+    )  # fmt: skip
+    return fig
+
+
+def compact_money(value: float | None) -> str:
+    """Short currency label for tight spaces: ``£9.82M``, ``£436k``, ``£950``."""
+    if value is None or pd.isna(value):
+        return "—"
+    for size, suffix in ((1e9, "B"), (1e6, "M"), (1e3, "k")):
+        if abs(value) >= size:
+            return f"{CUR}{value / size:.3g}{suffix}"
+    return f"{CUR}{value:,.0f}"

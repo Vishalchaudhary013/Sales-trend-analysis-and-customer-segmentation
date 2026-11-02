@@ -21,6 +21,25 @@ _W = "_filter_widget_"  # widget-key prefix
 SCOPE_LABELS = {"all": "All customers", "identified": "Identified only", "guest": "Guests only"}
 
 
+# Sidebar menu: (script path relative to the repo root, label, icon).
+NAV_PAGES: tuple[tuple[str, str, str], ...] = (
+    ("app.py", "Home", "🏠"),
+    ("pages/2_Executive_Overview.py", "Executive Overview", "📈"),
+    ("pages/3_Sales_Trends.py", "Sales Trends", "📅"),
+)
+
+
+def page_setup(title: str, icon: str, heading: str | None = None) -> None:
+    """Configure the page, render the sidebar menu and the page heading."""
+    st.set_page_config(page_title=f"{title} · {config.APP_TITLE}", page_icon=icon,
+                       layout="wide")  # fmt: skip
+    with st.sidebar:
+        for path, label, page_icon in NAV_PAGES:
+            st.page_link(path, label=label, icon=page_icon)
+        st.divider()
+    st.title(heading or title)
+
+
 @dataclass
 class ActiveDataset:
     """The dataset every page works on.

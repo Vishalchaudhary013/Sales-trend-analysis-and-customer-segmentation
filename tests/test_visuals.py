@@ -70,3 +70,32 @@ def test_empty_states(clean):
 def test_money_format():
     assert v.money(1234.5) == "£1,234" or v.money(1234.5) == "£1,235"
     assert v.money(None) == "—"
+
+
+def test_donut_colours_labels_and_limits(clean):
+    import pandas as pd
+    import pytest
+
+    from src import config
+
+    lines = a.apply_filters(clean, a.Filters())
+    mix = a.revenue_share(lines, top_n=2)
+    fig = v.fig_donut(mix, "Revenue by country", centre="£1")
+    pie = fig.data[0]
+    assert pie.hole > 0 and "%{percent" in pie.texttemplate
+    assert all("%" in lbl for lbl in pie.labels)  # share in text, not colour only
+    colors = list(pie.marker.colors)
+    if "Other" in list(mix["label"]):
+        assert colors[list(mix["label"]).index("Other")] == config.OTHER_COLOR
+    assert colors[0] == config.CATEGORICAL_ORDER[0]
+    too_many = pd.DataFrame({"label": list("abcdefg"), "value": [1] * 7, "share": [1 / 7] * 7})
+    with pytest.raises(ValueError):
+        v.fig_donut(too_many, "x")
+    assert v.fig_donut(mix.iloc[0:0], "x").layout.annotations
+
+
+def test_compact_money():
+    assert v.compact_money(9_823_459) == "£9.82M"
+    assert v.compact_money(436_220) == "£436k"
+    assert v.compact_money(950) == "£950"
+    assert v.compact_money(None) == "—"

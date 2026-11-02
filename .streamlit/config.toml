@@ -7,8 +7,11 @@ textColor = "#1A1A1A"
 font = "sans serif"
 
 [server]
-maxUploadSize = 50
+maxUploadSize = 200  # keep equal to config.MAX_UPLOAD_MB
 headless = true
+
+[client]
+showSidebarNavigation = false  # custom labelled menu rendered by src/ui.py
 
 [browser]
 gatherUsageStats = false

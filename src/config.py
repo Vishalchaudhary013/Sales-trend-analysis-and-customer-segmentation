@@ -190,6 +190,13 @@ PALETTE: Final[dict[str, str]] = {
     "grey": "#7F7F7F",
 }
 SINGLE_SERIES_COLOR: Final[str] = PALETTE["blue"]
+# Fixed categorical order for part-to-whole charts (<= 5 named slices + "Other").
+# Validated for CVD separation with secondary encoding (direct slice labels + gaps).
+CATEGORICAL_ORDER: Final[tuple[str, ...]] = (
+    "#0072B2", "#E69F00", "#009E73", "#CC79A7", "#56B4E9",
+)  # fmt: skip
+OTHER_COLOR: Final[str] = "#9AA0A6"
+MAX_PIE_SLICES: Final[int] = 6  # including "Other"
 NEUTRAL_COLOR: Final[str] = "#4D4D4D"
 RISK_COLORS: Final[dict[str, str]] = {
     "High": PALETTE["vermillion"],

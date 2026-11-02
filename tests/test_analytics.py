@@ -180,3 +180,18 @@ def test_synthetic_end_to_end(clean):
     k = a.compute_kpis(lines, clean)
     ts = a.time_series(lines, "Monthly", clean.InvoiceDate.max(), clean.InvoiceDate.min())
     assert ts["revenue"].sum() == pytest.approx(k["revenue"])
+
+
+def test_part_to_whole_breakdowns(tiny):
+    lines = a.apply_filters(tiny, a.Filters())
+    share = a.revenue_share(lines, top_n=1)
+    assert share["label"].tolist() == ["UK", "Other"]
+    assert share["value"].sum() == pytest.approx(85) and share["share"].sum() == pytest.approx(1)
+    assert len(a.revenue_share(lines)) == 2  # no "Other" when everything fits
+    ct = a.revenue_by_customer_type(lines).set_index("label")
+    assert ct.loc["Guest sales", "value"] == pytest.approx(20)
+    inv = a.invoice_status_mix(tiny).set_index("label")
+    assert inv.loc["Cancelled", "value"] == 1 and inv.loc["Completed", "value"] == 6
+    assert a.revenue_share(lines.drop(columns=["Country"])).empty
+    assert a.revenue_by_customer_type(lines.iloc[0:0]).empty
+    assert a.invoice_status_mix(tiny.iloc[0:0]).empty

@@ -1,15 +1,13 @@
-"""Streamlit entry point: page navigation and the landing (Home) page."""
+"""Streamlit entry point: the landing (Home) page. Other pages live in ``pages/``."""
 
 import streamlit as st
 
 from src import config, ingestion, ui
 
-st.set_page_config(page_title=config.APP_TITLE, page_icon="📊", layout="wide")
-
 
 def home() -> None:
     """Landing page: project summary, navigation guide and dataset status."""
-    st.title(config.APP_TITLE)
+    ui.page_setup("Home", "🏠", heading=config.APP_TITLE)
     st.markdown(
         "Analyse **sales trends**, segment **customers** by purchasing behaviour and flag "
         "customers at risk of **churning** — all computed live from transaction data."
@@ -52,9 +50,4 @@ def home() -> None:
     )
 
 
-pages = [
-    st.Page(home, title="Home", icon="🏠", default=True),
-    st.Page("pages/2_Executive_Overview.py", title="Executive Overview", icon="📈"),
-    st.Page("pages/3_Sales_Trends.py", title="Sales Trends", icon="📅"),
-]
-st.navigation(pages).run()
+home()

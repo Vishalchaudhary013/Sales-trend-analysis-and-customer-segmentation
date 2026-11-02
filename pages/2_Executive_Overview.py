@@ -2,9 +2,9 @@
 
 import streamlit as st
 
-from src import analytics, ui
+from src import analytics, ui, visuals
 
-st.title("Executive Overview")
+ui.page_setup("Executive Overview", "📈")
 page = ui.load_page_data()
 
 with ui.friendly_errors("computing the KPIs"):
@@ -44,6 +44,29 @@ with ui.friendly_errors("computing the KPIs"):
                 else ui.fmt_int(cur)  # fmt: skip
             col.metric(title, value, delta=ui.fmt_pct(pct, signed=True) if pct is not None
                        else None)  # fmt: skip
+
+    st.divider()
+    st.subheader("Revenue and order mix")
+    total = visuals.compact_money(k["revenue"])
+    invoices = analytics.invoice_status_mix(page.scope)
+    mixes = [
+        ("mix_country", analytics.revenue_share(page.lines), "Revenue by country", "money",
+         total),
+        ("mix_customer", analytics.revenue_by_customer_type(page.lines),
+         "Revenue by customer type", "money", total),
+        ("mix_invoices", invoices, "Invoices by status", "count",
+         f"{int(invoices['value'].sum()):,}" if not invoices.empty else None),
+    ]  # fmt: skip
+    slots = [*st.columns(2), st.columns(2)[0]]
+    for col, (slug, mix, title, kind, centre) in zip(slots, mixes, strict=True):
+        with col:
+            st.plotly_chart(visuals.fig_donut(mix, title, kind, centre), width="stretch",
+                            theme=None, key=slug)  # fmt: skip
+            st.caption(visuals.FIGURE_DESCRIPTIONS[slug])
+            if not mix.empty:
+                with st.expander("View data table"):
+                    st.dataframe(mix.assign(share=mix["share"].map("{:.1%}".format)),
+                                 hide_index=True, width="stretch")  # fmt: skip
 
     conc = analytics.revenue_concentration(page.lines)
     if conc:
