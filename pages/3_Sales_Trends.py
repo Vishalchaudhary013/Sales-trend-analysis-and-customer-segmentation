@@ -2,7 +2,7 @@
 
 import streamlit as st
 
-from src import analytics, config, ui, visuals
+from src import analytics, config, static_figures, ui, visuals
 
 ui.page_setup("Sales Trends", "📅")
 page = ui.load_page_data()
@@ -79,3 +79,25 @@ with tab_cust, ui.friendly_errors("building the customer charts"):
         "cancellations",
         canc.drop(columns=["period_start"]),
     )
+
+st.divider()
+st.subheader("Export report figures")
+st.write(
+    f"Save all {len(static_figures.FIGURES)} report charts (sales, segments and churn model) for "
+    f"the current filters as {config.EXPORT_DPI}-dpi PNGs to `reports/figures/`. Amounts are "
+    f"exported in {config.BASE_CURRENCY}. Takes about 30 seconds (it re-runs model "
+    "cross-validation)."
+)
+if st.button("Export all figures", type="primary"):
+    with ui.friendly_errors("exporting the figures"), st.spinner("Rendering figures…"):
+        inputs = static_figures.prepare_inputs(page.active.data, page.filters)
+        paths = static_figures.export_all(inputs)
+        st.success(f"Exported {len(paths)} figures to `reports/figures/`.")
+        st.dataframe(
+            {
+                "file": [p.name for p in paths],
+                "description": [static_figures.FIGURES[p.stem][1] for p in paths],
+            },
+            hide_index=True,
+            width="stretch",
+        )
