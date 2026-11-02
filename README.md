@@ -1,6 +1,8 @@
-# Student Performance Analytics & Early-Warning Dashboard
+# Sales Trend Analysis & Customer Segmentation Dashboard
 
-Work in progress, built milestone by milestone. The full README arrives in M6.
+Streamlit dashboard for sales trend analysis, RFM / K-Means customer segmentation and a
+churn early-warning model, built on the UCI Online Retail dataset. Work in progress, built
+milestone by milestone; the full README arrives in M6.
 
 ## Setup
 
