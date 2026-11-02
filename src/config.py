@@ -157,8 +157,34 @@ RFM_SEGMENT_RULES: Final[tuple[tuple[str, str], ...]] = (
 )
 
 # K-Means
-KMEANS_K_RANGE: Final[tuple[int, int]] = (2, 10)  # inclusive
+KMEANS_K_RANGE: Final[tuple[int, int]] = (2, 10)  # inclusive, evaluated
 KMEANS_N_INIT: Final[int] = 10
+KMEANS_MAX_DISPLAY_K: Final[int] = 6  # one validated colour (and symbol) per cluster
+RFM_FEATURES: Final[tuple[str, ...]] = ("recency", "frequency", "monetary")
+# Display order of RFM segments (best to worst) for charts and tables.
+RFM_SEGMENT_ORDER: Final[tuple[str, ...]] = (
+    "Champions", "Loyal customers", "Potential loyalists", "New customers", "Promising",
+    "Need attention", "About to sleep", "Can't lose them", "At risk", "Hibernating",
+)  # fmt: skip
+RFM_SEGMENT_ACTIONS: Final[dict[str, str]] = {
+    "Champions": "Reward; early access; ask for reviews and referrals.",
+    "Loyal customers": "Upsell higher-value ranges; loyalty programme.",
+    "Potential loyalists": "Offer membership or bundles to build frequency.",
+    "New customers": "Onboarding journey; second-purchase incentive.",
+    "Promising": "Build awareness of the range; time-limited offers.",
+    "Need attention": "Personalised recommendations; reactivation offers.",
+    "About to sleep": "Win-back reminders before they lapse.",
+    "Can't lose them": "High-value but lapsing: personal outreach, strong win-back.",
+    "At risk": "Targeted win-back campaigns; ask for feedback.",
+    "Hibernating": "Low-cost reactivation; otherwise deprioritise.",
+}
+CLUSTER_SYMBOLS: Final[tuple[str, ...]] = (
+    "circle", "square", "diamond", "triangle-up", "x", "star",
+)  # fmt: skip
+# Validated (CVD + contrast, with secondary encoding: marker symbols and labels).
+CLUSTER_COLORS: Final[tuple[str, ...]] = (
+    "#0072B2", "#E69F00", "#009E73", "#CC79A7", "#56B4E9", "#D55E00",
+)  # fmt: skip
 
 # --------------------------------------------------------------------------- #
 # Churn early-warning model

@@ -6,6 +6,7 @@ and :mod:`src.analytics`, so pages stay free of business logic.
 
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -14,7 +15,7 @@ from dataclasses import dataclass
 import pandas as pd
 import streamlit as st
 
-from src import analytics, config, currency, ingestion
+from src import analytics, config, currency, ingestion, segmentation
 
 logger = logging.getLogger(__name__)
 _W = "_filter_widget_"  # widget-key prefix
@@ -26,6 +27,7 @@ NAV_PAGES: tuple[tuple[str, str, str], ...] = (
     ("app.py", "Home", "🏠"),
     ("pages/2_Executive_Overview.py", "Executive Overview", "📈"),
     ("pages/3_Sales_Trends.py", "Sales Trends", "📅"),
+    ("pages/4_Customer_Segments.py", "Customer Segments", "👥"),
 )
 
 
@@ -344,3 +346,36 @@ def fmt_pct(value: float | None, signed: bool = False) -> str:
 def fmt_int(value: float | None) -> str:
     """Format a count with thousands separators, or an em dash when missing."""
     return "—" if value is None or pd.isna(value) else f"{int(value):,}"
+
+
+def segmentation_lines(page: PageData) -> pd.DataFrame:
+    """Completed-sales lines (base currency) used for RFM, within the page's scope.
+
+    Independent of the returns/fees toggles so segments stay comparable; the
+    date, country and customer-scope filters still apply.
+    """
+    base = analytics.scope_filter(page.active.data, page.filters)
+    return base.loc[analytics.line_mask(base, analytics.Filters())]
+
+
+@st.cache_data(show_spinner="Segmenting customers…", max_entries=16)
+def _cached_segmentation(
+    dataset_key: str, filters_key: str, k: int | None, _lines: pd.DataFrame
+) -> segmentation.SegmentationResult:
+    """Cache segmentation per (dataset, filters, k); ``_lines`` is not hashed."""
+    return segmentation.segment_customers(_lines, k)
+
+
+def segment(page: PageData, k: int | None = None) -> segmentation.SegmentationResult:
+    """Segment the page's customers (cached), with amounts in the display currency."""
+    lines = segmentation_lines(page)
+    key = page.active.checksum or page.active.label
+    filters_key = json.dumps(page.filters.to_dict(), sort_keys=True)
+    result = _cached_segmentation(key, filters_key, k, lines)
+    if page.money.is_base:
+        return result
+    try:
+        converted = currency.convert(lines, page.money, load_fx_rates())
+    except currency.CurrencyError:
+        return result
+    return segmentation.with_display_currency(result, converted)

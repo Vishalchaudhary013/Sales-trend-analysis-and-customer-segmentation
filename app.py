@@ -43,9 +43,12 @@ def home() -> None:
         "- **Sales Trends**: revenue, orders, customers and order value over time; growth; "
         "weekday × hour pattern; top products and countries; new vs returning customers; "
         "cancellations.\n"
-        "- Further pages (data ingestion, customer segments, churn model, early warning, "
-        "methodology) are added in later milestones.\n\n"
-        "Use the **sidebar filters** (date range, country, customer type, returns, fees). "
+        "- **Customer Segments**: RFM scores and named segments with suggested actions, "
+        "K-Means clusters (with the choice of k explained) and a searchable customer table.\n"
+        "- Further pages (data ingestion, churn model, early warning, methodology) are added in "
+        "later milestones.\n\n"
+        "Use the **sidebar** to pick a display currency and set filters (date range, country, "
+        "customer type, returns, fees). "
         "They apply to every page."
     )
 

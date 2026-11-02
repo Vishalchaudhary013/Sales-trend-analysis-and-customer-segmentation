@@ -61,3 +61,14 @@ def test_currency_switch_converts_kpis():
     ratio = float(usd[1:].replace(",", "")) / float(gbp[1:].replace(",", ""))
     assert 1.53 < ratio < 1.67  # within the 2011 GBP/USD range
     assert any("Federal Reserve" in c.value for c in at.caption)
+
+
+def test_customer_segments_page():
+    at = _app()
+    at.switch_page("pages/4_Customer_Segments.py").run()
+    assert not at.exception and not at.error
+    m = _metrics(at)
+    assert m["Selected k"] == "5"
+    assert m["Champions"] == "630"
+    at.slider(key="seg_k").set_value(3).run()
+    assert not at.exception and _metrics(at)["Selected k"] == "3"
